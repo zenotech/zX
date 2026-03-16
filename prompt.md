@@ -15,6 +15,7 @@ You are tasked with building "zX", a powerful desktop web application that allow
 - **Remote Execution:** The backend must parse the user's `~/.ssh/config` file and serve a list of available hosts. The UI should present these hosts in a dropdown for the user to select.
 
 ### 2. Input Parameter Management & Modification
+- The user must be able to create a zX project directory that will be used for storing the database and for executing the command line application.
 - The user must be able to specify a range of input parameters. The application should support two methods for this:
   1. Uploading or specifying the path to an existing CSV file on local disk.
   2. Providing a Python snippet/function that procedurally generates and returns the matrix of input parameters.
