@@ -3,7 +3,7 @@
 You are tasked with building "zX", a powerful desktop web application that allows users to perform parametric explorations of command-line applications (CLI) running either locally or remotely.
 
 ## Technology Stack
-- **Desktop/Frontend:** Electron wrapping a modern web framework (e.g., React + Vite or Next.js).
+- **Desktop/Frontend:** Electron wrapping a modern web framework using React + Vite.
 - **Backend/Orchestration:** Python FastAPI server (using `pandas` or `csv` module for data handling).
 - **Remote Communication:** `paramiko` or `fabric` (for handling SSH connections).
 - **Data Storage:** CSV files on disk.
@@ -13,6 +13,10 @@ You are tasked with building "zX", a powerful desktop web application that allow
 ### 1. Connection Management
 - The UI must allow the user to select the execution environment: **Local** or **Remote**.
 - **Remote Execution:** The backend must parse the user's `~/.ssh/config` file and serve a list of available hosts. The UI should present these hosts in a dropdown for the user to select.
+- Show the connection status in the status bar at the bottom of the application.
+- The connection should find a free port on both the client and server systems to enable communication between the electron app and the python backend.
+- On connection uv python should be downloaded into ~/.zx/python on the server and any backend server requirements should be installed
+- The python backend should be deployed from the electron app in ~/.zx/backend on the server
 
 ### 2. Input Parameter Management & Modification
 - The user must be able to create a zX project directory that will be used for storing the database and for executing the command line application.
