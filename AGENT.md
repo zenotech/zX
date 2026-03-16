@@ -32,3 +32,4 @@ Read and strictly adhere to `prompt.md` located in this directory for the exact 
   4. Finalize visualization and data-grid edge cases.
 - **Testing:** Create Unit Tests for the backend and integration tests for the frontend. 
   1. Execute backend tests by connecting to localhost.
+- **Formatting:** Ensure consistent formatting across the codebase. Use black for Python and prettier for TypeScript/Javascript.
