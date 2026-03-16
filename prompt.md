@@ -20,9 +20,11 @@ You are tasked with building "zX", a powerful desktop web application that allow
   1. Uploading or specifying the path to an existing CSV file on local disk.
   2. Providing a Python snippet/function that procedurally generates and returns the matrix of input parameters.
 - **Editable Data Grid:** Once the input parameters are loaded or generated, the UI must present them in an interactive, editable table (e.g., using Ag-Grid or a similar data grid library). The user must be able to manually modify, add, or delete input parameters directly from the UI before starting the exploration.
+- The user must be able to visually select rows or via a range selection tool to initiate the execution of parameteric exploration on the selected rows. Also enable the user to dry run the execution of the parameteric exploration on the selected rows.
 
 ### 3. Dynamic Python Hook Execution
-The UI must provide a code editor interface (e.g., Monaco Editor) for the user to define Python snippets/functions. 
+The UI must provide a code editor interface (e.g., Monaco Editor) for the user to define Python snippets/functions. The python functions will require the database row as input and shared global state initialised by the user. Provide the ability to dry run the functions as well as the ability to force the execution of a function on a row that has already been processed.
+
 **Crucial:** Except for the generation hook (which can run locally), these Python functions MUST be executed on the target system (either local or the selected remote SSH server) where the CLI application runs.
 
 1. **Parameter Generation Hook (Optional):** A Python function that runs locally to populate the initial input parameters if a CSV is not provided.
