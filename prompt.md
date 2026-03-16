@@ -21,6 +21,7 @@ You are tasked with building "zX", a powerful desktop web application that allow
   2. Providing a Python snippet/function that procedurally generates and returns the matrix of input parameters.
 - **Editable Data Grid:** Once the input parameters are loaded or generated, the UI must present them in an interactive, editable table (e.g., using Ag-Grid or a similar data grid library). The user must be able to manually modify, add, or delete input parameters directly from the UI before starting the exploration.
 - The user must be able to visually select rows or via a range selection tool to initiate the execution of parameteric exploration on the selected rows. Also enable the user to dry run the execution of the parameteric exploration on the selected rows.
+- The user must be able to choose which python hooks to execute (pre-processing, launch, extraction). Default to all hooks
 
 ### 3. Dynamic Python Hook Execution
 The UI must provide a code editor interface (e.g., Monaco Editor) for the user to define Python snippets/functions. The python functions will require the database row as input and shared global state initialised by the user. Provide the ability to dry run the functions as well as the ability to force the execution of a function on a row that has already been processed.
