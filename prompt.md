@@ -29,9 +29,9 @@ The UI must provide a code editor interface (e.g., Monaco Editor) for the user t
 **Crucial:** Except for the generation hook (which can run locally), these Python functions MUST be executed on the target system (either local or the selected remote SSH server) where the CLI application runs.
 
 1. **Parameter Generation Hook (Optional):** A Python function that runs locally to populate the initial input parameters if a CSV is not provided.
-2. **Pre-processing Hook:** A Python function that takes a set of input parameters and converts them into the necessary configuration files or arguments required by the CLI app.
-3. **Launch Hook:** A Python function/command that triggers the execution of the CLI application.
-4. **Extraction Hook:** A Python function that runs after the CLI app finishes. It must parse the application's output, extract the parameters of interest, and return them.
+2. **Pre-processing Hook:** A Python function that takes a set of input parameters and converts them into the necessary configuration files or arguments required by the CLI app. Prior to calling this hook create a unique directory like run_{row_id} for the row and ensure the hook is executed in that directory.
+3. **Launch Hook:** A Python function/command that triggers the execution of the CLI application. This should execute in the same directory as the pre-processing hook.
+4. **Extraction Hook:** A Python function that runs after the CLI app finishes. It must parse the application's output, extract the parameters of interest, and return them. This should execute in the same directory as the pre-processing hook.
 
 ### 4. Asynchronous Execution & State Management
 - **Long-Running Executions:** CLI applications can run for a long time. The FastAPI backend must orchestrate the parametric loop asynchronously.
@@ -40,6 +40,12 @@ The UI must provide a code editor interface (e.g., Monaco Editor) for the user t
 ### 5. CSV Data Storage & Visualization Dashboard
 - **CSV Storage:** The system must maintain a master CSV file on disk acting as the primary database. As the "Extraction Hook" finishes for each run, the newly extracted output parameters must be appended to or merged with their corresponding input rows in this CSV file.
 - **Visualization:** The UI must include a visualization tab to explore the contents of this CSV file. This should include charting capabilities (e.g., scatter plots, line charts) to analyze the relationship between inputs and outputs.
+
+### 6. Terminal Access
+- The user needs access to the terminal on the system running the command line pplication so it can be monitored and controlled. This should be a split view terminal that can be split into multiple terminals.
+
+### 7. File Explorer
+- The user needs access to the file explorer on the system running the command line application to be able to view and edit files. This file explorer should be like vscode/antigravity explorer with the root set at the directory created for the project.
 
 ## Design & Aesthetics
 - Implement a premium, modern design system.
