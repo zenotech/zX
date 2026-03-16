@@ -138,8 +138,14 @@ The following `_zx_` prefixed columns are automatically managed by the system an
 #### Visualization
 
 - The UI must include a visualization tab to explore the CSV contents.
-- Include charting capabilities (scatter plots, line charts, histograms) to analyze relationships between input and output parameters.
+- Include charting capabilities (scatter plots, line charts, histograms) to analyze relationships between input and output parameters. Use plotly for the charts.
 - Charts should support axis selection from any CSV column.
+- Enable the user to create hooks/plot.py to define custom visualizations.
+ ```python
+   def plot(table: DataFrame, state: dict) -> dict:
+       """Generate custom plots. Returns a dictionary of plotly figure objects."""
+       ...
+   ```
 
 ---
 
@@ -173,7 +179,8 @@ The following directory layout is created on the target system (local or remote)
 │   ├── initialize.py          # Initialization Hook (optional)
 │   ├── preprocess.py          # Pre-processing Hook
 │   ├── launch.py              # Launch Hook
-│   └── extract.py             # Extraction Hook
+│   ├── extract.py             # Extraction Hook
+│   └── plot.py                # Visualization Hook (optional)
 ├── run_0/                     # Per-row execution directory (row_id = 0)
 │   ├── zx_hook.log            # Captured stdout/stderr from hook execution
 │   └── ...                    # User-generated input/output files
