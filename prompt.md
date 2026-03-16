@@ -6,7 +6,7 @@ You are tasked with building "zX", a powerful desktop web application that allow
 
 - **Desktop/Frontend:** Electron wrapping a modern web framework using React + Vite.
 - **Backend/Orchestration:** Python FastAPI server (using `pandas` or `csv` module for data handling).
-- **Remote Communication:** `paramiko` or `fabric` (for handling SSH connections).
+- **Remote Communication:** Use appropriate node library for ssh connections.
 - **Data Storage:** CSV files on disk.
 
 ---
