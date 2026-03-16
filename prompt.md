@@ -54,7 +54,7 @@ You are tasked with building "zX", a powerful desktop web application that allow
 
 The UI must provide a code editor interface (e.g., Monaco Editor) for the user to define Python snippets/functions. Hook scripts are persisted in the project's `hooks/` directory.
 
-**Crucial:** Except for the Initialization Hook (which runs locally), all Python hooks MUST be executed on the target system (local or the selected remote SSH server) where the CLI application runs.
+**Crucial:** All Python hooks MUST be executed on the target system (local or the selected remote SSH server) where the CLI application runs. When a hook is saved, the UI must test it on the target system to ensure it is valid python to highlight any syntax errors before execution.
 
 Each hook receives the current database row as a `dict`, a shared `state` dict (initialized by the Initialization Hook), and the `run_dir` path.
 
