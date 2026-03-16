@@ -58,6 +58,8 @@ The UI must provide a code editor interface (e.g., Monaco Editor) for the user t
 
 Each hook receives the current database row as a `dict`, a shared `state` dict (initialized by the Initialization Hook), and the `run_dir` path.
 
+Empty hook functions should be created when the project directory gets initialized by copying the default hook files from the template directory.
+
 #### Hook Definitions
 
 1. **Initialization Hook (Optional — runs locally)**
