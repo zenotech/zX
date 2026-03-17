@@ -197,6 +197,7 @@ The following directory layout is created on the target system (local or remote)
 │   ├── preprocess.py          # Pre-processing Hook
 │   ├── launch.py              # Launch Hook
 │   ├── extract.py             # Extraction Hook
+│   ├── explore.py             # Exploration Hook (optional)
 │   └── plot.py                # Visualization Hook (optional)
 ├── run_0/                     # Per-row execution directory (row_id = 0)
 │   ├── zx_hook.log            # Captured stdout/stderr from hook execution
@@ -257,3 +258,12 @@ The following directory layout is created on the target system (local or remote)
   - `npm run dev:electron` — starts the Electron shell pointing at the Vite dev server.
   - `uvicorn` or equivalent — starts the FastAPI backend in reload mode.
   - A combined `npm run dev:all` script that launches all three concurrently.
+
+---
+
+## Testing
+
+- The enable automatic testing of the system generate the following simple python cli applications and populate the hooks appropriately to drive the required functionality:
+  - A simple python cli application that explores the Six-Hump Camel function using Design of Experiments in the initialisation hook and Kriging and Gradient descent in the exploration hook to find the minima
+  - A simple python cli applicatiobn the implements ZDT1 Function to test the use of a Genetic Algorithm to identify the Pareto Front in the exploration hook
+  
