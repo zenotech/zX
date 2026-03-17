@@ -62,11 +62,11 @@ Empty hook functions should be created when the project directory gets initializ
 
 #### Hook Definitions
 
-1. **Initialization Hook (Optional — runs locally)**
+1. **Initialization Hook (Optional)**
    - Populates the initial input parameters if a CSV is not provided.
    - Also initializes a shared global `state` dictionary that is passed to all subsequent hooks.
    ```python
-   def initialize() -> tuple[list[dict], dict]:
+   def initialize(table: DataFrame, state: dict) -> tuple[list[dict], dict]:
        """Returns (rows, state). rows = list of input parameter dicts, state = shared global state."""
        ...
    ```
@@ -167,6 +167,21 @@ The following `_zx_` prefixed columns are automatically managed by the system an
   - **Deleting** files and directories.
   - **Renaming** files and directories.
 - Styled similarly to VS Code / Antigravity's file explorer with a tree-view layout.
+
+---
+
+### 9. Exploration Hook
+
+- The Exploration Hook is a Python function that is called by the system to generate a new set of rows in the database.
+- It is called after the Extraction hook and if it returns an empty dictionary (Default) no new rows are generated. If it returns a list of dictionaries, each dictionary is a new row in the database and this should automatically trigger the preprocess hook for each new row.
+- It is called in the same directory as the other hooks.
+- It should return a list of dictionaries, where each dictionary represents a row in the database.
+
+```python
+   def explore(table: DataFrame, state: dict) -> list[dict]:
+       """Generate a new set of rows for the database."""
+       ...
+   ```
 
 ---
 
