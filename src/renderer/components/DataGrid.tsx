@@ -29,6 +29,148 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Hover Popover States for zx_hook.log
+  const [hoveredRowId, setHoveredRowId] = useState<number | null>(null);
+  const [showPopover, setShowPopover] = useState<boolean>(false);
+  const [popoverCoords, setPopoverCoords] = useState<{ top: number, left: number } | null>(null);
+  const [logContent, setLogContent] = useState<string>('');
+  const [loadingLog, setLoadingLog] = useState<boolean>(false);
+
+  const hideTimeoutRef = useRef<any>(null);
+  const activeFetchRowIdRef = useRef<number | null>(null);
+
+  // Fetch zx_hook.log via REST API
+  const fetchLog = async (rowId: number) => {
+    setLoadingLog(true);
+    setLogContent('');
+    activeFetchRowIdRef.current = rowId;
+    
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/run/log/${rowId}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      if (response.ok) {
+        const text = await response.text();
+        if (activeFetchRowIdRef.current === rowId) {
+          setLogContent(text);
+        }
+      } else {
+        if (activeFetchRowIdRef.current === rowId) {
+          setLogContent(`Error fetching log: ${response.statusText}`);
+        }
+      }
+    } catch (err: any) {
+      if (activeFetchRowIdRef.current === rowId) {
+        setLogContent(`Failed to load log: ${err.message || err}`);
+      }
+    } finally {
+      if (activeFetchRowIdRef.current === rowId) {
+        setLoadingLog(false);
+      }
+    }
+  };
+
+  // Live polling of logs for active running rows
+  useEffect(() => {
+    if (!showPopover || hoveredRowId === null) return;
+    
+    const hoveredRow = data.find(r => r._zx_row_id === hoveredRowId);
+    if (hoveredRow?._zx_status !== 'running') return;
+    
+    const interval = setInterval(() => {
+      fetchLog(hoveredRowId);
+    }, 1500);
+    
+    return () => clearInterval(interval);
+  }, [showPopover, hoveredRowId, data]);
+
+  // Clean up timeouts
+  useEffect(() => {
+    return () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Handlers for dynamic coordinates, edge check, and hover timeout delay
+  const handleStatusMouseEnter = (e: React.MouseEvent, rowId: number) => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    
+    setHoveredRowId(rowId);
+    setShowPopover(true);
+    fetchLog(rowId);
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const popoverWidth = 500;
+    
+    // Place to the left of the badge by default
+    let left = rect.left - popoverWidth - 16;
+    let top = rect.top;
+    
+    // Position boundaries checks
+    if (left < 10) {
+      left = rect.right + 16;
+    }
+    if (left + popoverWidth > window.innerWidth) {
+      left = Math.max(10, window.innerWidth - popoverWidth - 20);
+    }
+    
+    const popoverHeight = 350;
+    if (top + popoverHeight > window.innerHeight) {
+      top = Math.max(10, window.innerHeight - popoverHeight - 20);
+    }
+    
+    setPopoverCoords({ top, left });
+  };
+
+  const handleStatusMouseLeave = () => {
+    hideTimeoutRef.current = setTimeout(() => {
+      setShowPopover(false);
+      setHoveredRowId(null);
+    }, 200);
+  };
+
+  const handlePopoverMouseEnter = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+
+  const handlePopoverMouseLeave = () => {
+    hideTimeoutRef.current = setTimeout(() => {
+      setShowPopover(false);
+      setHoveredRowId(null);
+    }, 200);
+  };
+
+  // Parsing lines to assign vibrant modern aesthetic text coloring
+  const colorizeLogLine = (line: string) => {
+    const lower = line.toLowerCase();
+    let color = 'var(--text-primary)';
+    let fontWeight = 'normal';
+    
+    if (lower.includes('error') || lower.includes('exception') || lower.includes('failed') || lower.includes('traceback')) {
+      color = 'var(--status-failed)';
+      fontWeight = 'bold';
+    } else if (lower.includes('warning') || lower.includes('warn')) {
+      color = 'var(--status-pending)';
+    } else if (lower.includes('success') || lower.includes('completed') || lower.includes('successfully') || lower.includes('finished')) {
+      color = 'var(--status-completed)';
+    } else if (lower.includes('running') || lower.includes('start') || lower.includes('trigger') || lower.includes('launching')) {
+      color = 'var(--accent-cyan)';
+    }
+    
+    return { color, fontWeight };
+  };
+
+
   const updateColumnsFromData = (db: any[]) => {
     if (db && db.length > 0) {
       // Exclude reserved columns from quick editable list but keep them for reference
@@ -447,12 +589,22 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
                               />
                             ) : (
                               col === '_zx_status' ? (
-                                <span className={`badge ${
-                                  status === 'completed' ? 'bg-success' : 
-                                  status === 'running' ? 'bg-info text-dark' : 
-                                  status === 'failed' ? 'bg-danger' : 
-                                  'bg-warning text-dark'
-                                } text-uppercase font-monospace`} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px' }}>
+                                <span 
+                                  className={`badge ${
+                                    status === 'completed' ? 'bg-success' : 
+                                    status === 'running' ? 'bg-info text-dark' : 
+                                    status === 'failed' ? 'bg-danger' : 
+                                    'bg-warning text-dark'
+                                  } text-uppercase font-monospace`} 
+                                  style={{ 
+                                    fontSize: '11px', 
+                                    padding: '4px 8px', 
+                                    borderRadius: '12px',
+                                    cursor: 'help'
+                                  }}
+                                  onMouseEnter={(e) => handleStatusMouseEnter(e, row._zx_row_id)}
+                                  onMouseLeave={handleStatusMouseLeave}
+                                >
                                   {status}
                                 </span>
                               ) : col === '_zx_error' && cellVal ? (
@@ -474,6 +626,77 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
           </div>
         )}
       </div>
+
+      {/* Dynamic Hover Popover for zx_hook.log */}
+      {showPopover && hoveredRowId !== null && (
+        <div 
+          className="glass-panel animate-slide-up"
+          onMouseEnter={handlePopoverMouseEnter}
+          onMouseLeave={handlePopoverMouseLeave}
+          style={{
+            position: 'fixed',
+            top: popoverCoords?.top ?? 0,
+            left: popoverCoords?.left ?? 0,
+            width: '500px',
+            maxHeight: '350px',
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            boxShadow: '0 12px 40px rgba(0, 0, 0, 0.6)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            background: 'var(--bg-secondary)',
+            padding: '12px'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-cyan)' }}>
+              zx_hook.log (Row {hoveredRowId})
+            </span>
+            {data.find(r => r._zx_row_id === hoveredRowId)?._zx_status === 'running' && (
+              <span className="d-flex align-items-center gap-1 small text-info" style={{ fontSize: '10px' }}>
+                <span className="spinner-border spinner-border-sm animate-pulse" role="status" style={{ width: '8px', height: '8px', borderWidth: '1px' }}></span>
+                Live tailing
+              </span>
+            )}
+            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
+              Hover to scroll
+            </span>
+          </div>
+          
+          <div 
+            style={{ 
+              flexGrow: 1, 
+              overflow: 'auto', 
+              background: 'var(--bg-primary)', 
+              padding: '8px', 
+              borderRadius: '4px', 
+              border: '1px solid var(--border-color)' 
+            }}
+          >
+            {loadingLog && !logContent ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)', fontSize: '12px', padding: '12px' }}>
+                <div className="spinner" />
+                <span>Loading log...</span>
+              </div>
+            ) : logContent ? (
+              <pre style={{ margin: 0, fontSize: '11px', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: 'var(--text-primary)' }}>
+                {logContent.split('\n').map((line, idx) => {
+                  const styles = colorizeLogLine(line);
+                  return (
+                    <div key={idx} style={{ color: styles.color, fontWeight: styles.fontWeight as any }}>
+                      {line}
+                    </div>
+                  );
+                })}
+              </pre>
+            ) : (
+              <div style={{ color: 'var(--text-muted)', fontSize: '12px', padding: '12px' }}>
+                No log entries found.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

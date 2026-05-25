@@ -157,7 +157,7 @@ def run_loop_in_thread(
                 # Setup run directory
                 run_dir = Path(project_path) / "runs" / f"run_{row_id}"
                 
-                if force and run_dir.exists():
+                if force and run_dir.exists() and "preprocessing" in hooks:
                     try:
                         shutil.rmtree(run_dir)
                     except Exception as e:
