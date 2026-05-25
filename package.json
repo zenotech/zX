@@ -42,7 +42,7 @@
     "electron": "^39.8.5",
     "electron-builder": "^24.13.3",
     "typescript": "^5.4.5",
-    "vite": "^5.2.11"
+    "vite": "^8.0.14"
   },
   "build": {
     "appId": "com.zenotech.zx",
