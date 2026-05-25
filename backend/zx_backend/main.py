@@ -392,6 +392,19 @@ async def get_run_log_endpoint(row_id: int):
     except Exception as e:
         return f"Failed loading log: {str(e)}"
 
+@app.get("/api/run/explore-log/{iteration}", response_class=PlainTextResponse)
+async def get_explore_log_endpoint(iteration: int):
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    log_path = os.path.join(active_project_path, "runs", f"explore_{iteration}.log")
+    if not os.path.exists(log_path):
+        raise HTTPException(status_code=404, detail=f"Explore log for iteration {iteration} does not exist.")
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except Exception as e:
+        return f"Failed loading explore log: {str(e)}"
+
 # WebSockets Endpoint
 @app.websocket("/ws/status")
 async def websocket_status(websocket: WebSocket, token: str = Query(...)):

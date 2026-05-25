@@ -29,8 +29,10 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Hover Popover States for zx_hook.log
+  // Hover Popover States for zx_hook.log and explore_{iteration}.log
+  const [popoverType, setPopoverType] = useState<'status' | 'iteration' | null>(null);
   const [hoveredRowId, setHoveredRowId] = useState<number | null>(null);
+  const [hoveredIteration, setHoveredIteration] = useState<number | null>(null);
   const [showPopover, setShowPopover] = useState<boolean>(false);
   const [popoverCoords, setPopoverCoords] = useState<{ top: number, left: number } | null>(null);
   const [logContent, setLogContent] = useState<string>('');
@@ -38,12 +40,14 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
 
   const hideTimeoutRef = useRef<any>(null);
   const activeFetchRowIdRef = useRef<number | null>(null);
+  const activeFetchIterationRef = useRef<number | null>(null);
 
   // Fetch zx_hook.log via REST API
   const fetchLog = async (rowId: number) => {
     setLoadingLog(true);
     setLogContent('');
     activeFetchRowIdRef.current = rowId;
+    activeFetchIterationRef.current = null;
     
     try {
       const response = await fetch(`http://127.0.0.1:${port}/api/run/log/${rowId}`, {
@@ -72,9 +76,44 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
     }
   };
 
+  // Fetch explore_{iteration}.log via REST API
+  const fetchExploreLog = async (iteration: number) => {
+    setLoadingLog(true);
+    setLogContent('');
+    activeFetchRowIdRef.current = null;
+    activeFetchIterationRef.current = iteration;
+    
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/run/explore-log/${iteration}`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+      if (response.ok) {
+        const text = await response.text();
+        if (activeFetchIterationRef.current === iteration) {
+          setLogContent(text);
+          setShowPopover(true);
+        }
+      } else {
+        if (activeFetchIterationRef.current === iteration) {
+          setShowPopover(false);
+        }
+      }
+    } catch (err: any) {
+      if (activeFetchIterationRef.current === iteration) {
+        setShowPopover(false);
+      }
+    } finally {
+      if (activeFetchIterationRef.current === iteration) {
+        setLoadingLog(false);
+      }
+    }
+  };
+
   // Live polling of logs for active running rows
   useEffect(() => {
-    if (!showPopover || hoveredRowId === null) return;
+    if (!showPopover || hoveredRowId === null || popoverType !== 'status') return;
     
     const hoveredRow = data.find(r => r._zx_row_id === hoveredRowId);
     if (hoveredRow?._zx_status !== 'running') return;
@@ -84,7 +123,7 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
     }, 1500);
     
     return () => clearInterval(interval);
-  }, [showPopover, hoveredRowId, data]);
+  }, [showPopover, hoveredRowId, data, popoverType]);
 
   // Clean up timeouts
   useEffect(() => {
@@ -103,6 +142,7 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
     }
     
     setHoveredRowId(rowId);
+    setPopoverType('status');
     setShowPopover(true);
     fetchLog(rowId);
     
@@ -133,6 +173,51 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
     hideTimeoutRef.current = setTimeout(() => {
       setShowPopover(false);
       setHoveredRowId(null);
+      setPopoverType(null);
+    }, 200);
+  };
+
+  const handleIterationMouseEnter = (e: React.MouseEvent, iteration: number) => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    
+    if (iteration <= 0) {
+      setShowPopover(false);
+      return;
+    }
+    
+    setHoveredIteration(iteration);
+    setPopoverType('iteration');
+    fetchExploreLog(iteration);
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const popoverWidth = 500;
+    
+    let left = rect.left - popoverWidth - 16;
+    let top = rect.top;
+    
+    if (left < 10) {
+      left = rect.right + 16;
+    }
+    if (left + popoverWidth > window.innerWidth) {
+      left = Math.max(10, window.innerWidth - popoverWidth - 20);
+    }
+    
+    const popoverHeight = 350;
+    if (top + popoverHeight > window.innerHeight) {
+      top = Math.max(10, window.innerHeight - popoverHeight - 20);
+    }
+    
+    setPopoverCoords({ top, left });
+  };
+
+  const handleIterationMouseLeave = () => {
+    hideTimeoutRef.current = setTimeout(() => {
+      setShowPopover(false);
+      setHoveredIteration(null);
+      setPopoverType(null);
     }, 200);
   };
 
@@ -147,6 +232,8 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
     hideTimeoutRef.current = setTimeout(() => {
       setShowPopover(false);
       setHoveredRowId(null);
+      setHoveredIteration(null);
+      setPopoverType(null);
     }, 200);
   };
 
@@ -607,6 +694,19 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
                                 >
                                   {status}
                                 </span>
+                              ) : col === '_zx_iteration' ? (
+                                <span 
+                                  style={{ 
+                                    cursor: cellVal > 0 ? 'help' : 'default',
+                                    textDecoration: cellVal > 0 ? 'underline dotted var(--accent-cyan)' : 'none',
+                                    color: cellVal > 0 ? 'var(--accent-cyan)' : 'inherit',
+                                    fontWeight: cellVal > 0 ? 'bold' : 'normal'
+                                  }}
+                                  onMouseEnter={(e) => handleIterationMouseEnter(e, Number(cellVal))}
+                                  onMouseLeave={handleIterationMouseLeave}
+                                >
+                                  {cellVal}
+                                </span>
                               ) : col === '_zx_error' && cellVal ? (
                                 <span style={{ color: 'var(--status-failed)', fontSize: '11px', display: 'block', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={cellVal}>
                                   {cellVal}
@@ -627,8 +727,8 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
         )}
       </div>
 
-      {/* Dynamic Hover Popover for zx_hook.log */}
-      {showPopover && hoveredRowId !== null && (
+      {/* Dynamic Hover Popover for logs */}
+      {showPopover && (hoveredRowId !== null || hoveredIteration !== null) && (
         <div 
           className="glass-panel animate-slide-up"
           onMouseEnter={handlePopoverMouseEnter}
@@ -650,9 +750,11 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', borderBottom: '1px solid var(--border-color)', paddingBottom: '6px' }}>
             <span style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--accent-cyan)' }}>
-              zx_hook.log (Row {hoveredRowId})
+              {popoverType === 'iteration' 
+                ? `explore_${hoveredIteration}.log (Iteration ${hoveredIteration})`
+                : `zx_hook.log (Row ${hoveredRowId})`}
             </span>
-            {data.find(r => r._zx_row_id === hoveredRowId)?._zx_status === 'running' && (
+            {popoverType === 'status' && data.find(r => r._zx_row_id === hoveredRowId)?._zx_status === 'running' && (
               <span className="d-flex align-items-center gap-1 small text-info" style={{ fontSize: '10px' }}>
                 <span className="spinner-border spinner-border-sm animate-pulse" role="status" style={{ width: '8px', height: '8px', borderWidth: '1px' }}></span>
                 Live tailing

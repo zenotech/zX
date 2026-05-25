@@ -5,30 +5,30 @@
   --bg-primary: #0d0e12;
   --bg-secondary: #141722;
   --bg-tertiary: #1b1e2a;
-  
+
   /* Primary accent: warm amber gold from zCFD primary */
   --accent-cyan: #d4890e;
   /* Secondary accent: warm copper/bronze – analogous complement of primary */
   --accent-purple: #c4572a;
   --accent-purple-glow: rgba(196, 87, 42, 0.4);
   --accent-cyan-glow: rgba(212, 137, 14, 0.3);
-  
+
   --text-primary: #e6ebf1;
   --text-secondary: #a09484;
   --text-muted: #6b5f54;
-  
+
   --border-color: #2e2519;
   --border-focus: #4a3c2e;
-  
+
   /* Status colours: mapped from zCFD theme palette */
   --status-pending: #c48e05;
   --status-running: #d4890e;
   --status-completed: #22c55e;
   --status-failed: #ef4444;
-  
+
   --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
-  
+
   --glass-bg: rgba(20, 20, 16, 0.7);
   --glass-border: rgba(189, 108, 10, 0.08);
 }
@@ -37,44 +37,44 @@
   --bg-primary: #faf8f5;
   --bg-secondary: #ffffff;
   --bg-tertiary: #f5f0ea;
-  
+
   --accent-cyan: #bd6c0a;
   --accent-purple: #a04520;
   --accent-purple-glow: rgba(160, 69, 32, 0.2);
   --accent-cyan-glow: rgba(189, 108, 10, 0.2);
-  
+
   --text-primary: #1a1410;
   --text-secondary: #5c4f42;
   --text-muted: #9a8d80;
-  
+
   --border-color: #e0d5c8;
   --border-focus: #b8a998;
-  
+
   --glass-bg: rgba(255, 252, 248, 0.75);
   --glass-border: rgba(189, 108, 10, 0.1);
 }
 
 /* Premium smooth layout-wide transitions */
-body, 
-.layout-header, 
-.layout-sidebar, 
-.layout-statusbar, 
-.layout-content, 
-.card, 
-.glass-panel, 
-table, 
-tr, 
-td, 
-input, 
+body,
+.layout-header,
+.layout-sidebar,
+.layout-statusbar,
+.layout-content,
+.card,
+.glass-panel,
+table,
+tr,
+td,
+input,
 select,
 button,
 span,
 h3,
 pre {
-  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
-              color 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
-              border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-              box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {
@@ -96,6 +96,10 @@ body {
 /* Light mode specific Bootstrap / custom component overrides */
 [data-theme='light'] .text-white {
   color: var(--text-primary) !important;
+}
+
+[data-theme='light'] .text-secondary {
+  color: #5c4f42 !important;
 }
 
 [data-theme='light'] .bg-dark {
@@ -191,6 +195,42 @@ body {
   color: var(--text-primary) !important;
 }
 
+/* Inactive tab/nav buttons in light mode (e.g. Remote SSH Server) */
+[data-theme='light'] .btn-link.text-secondary {
+  color: var(--text-muted) !important;
+}
+
+[data-theme='light'] .btn-link.text-secondary:hover {
+  color: var(--text-primary) !important;
+  background: var(--bg-tertiary) !important;
+}
+
+/* Ensure form controls are clearly visible in light mode */
+[data-theme='light'] .form-control,
+[data-theme='light'] .form-select {
+  background-color: #ffffff !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Placeholder text visible in light mode */
+[data-theme='light'] .form-control::placeholder,
+[data-theme='light'] input::placeholder {
+  color: var(--text-muted) !important;
+  opacity: 1 !important;
+}
+
+/* Glass panel: solid white in light mode */
+[data-theme='light'] .glass-panel {
+  background: rgba(255, 255, 255, 0.97) !important;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12) !important;
+}
+
+/* text-muted override for labels */
+[data-theme='light'] .text-muted {
+  color: #7a6e62 !important;
+}
+
 [data-theme='light'] .nav-tabs {
   border-color: var(--border-color) !important;
 }
@@ -223,13 +263,16 @@ body {
   width: 6px;
   height: 6px;
 }
+
 ::-webkit-scrollbar-track {
   background: var(--bg-primary);
 }
+
 ::-webkit-scrollbar-thumb {
   background: var(--border-color);
   border-radius: 4px;
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
@@ -245,17 +288,33 @@ body {
 
 /* Animations */
 @keyframes pulse {
-  0%, 100% { opacity: 0.6; }
-  50% { opacity: 1; }
+
+  0%,
+  100% {
+    opacity: 0.6;
+  }
+
+  50% {
+    opacity: 1;
+  }
 }
 
 @keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .animate-pulse {
@@ -333,7 +392,9 @@ body {
 }
 
 /* Typography & Inputs */
-input, select, textarea {
+input,
+select,
+textarea {
   background: var(--bg-primary);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
@@ -345,7 +406,9 @@ input, select, textarea {
   transition: border-color 0.2s;
 }
 
-input:focus, select:focus, textarea:focus {
+input:focus,
+select:focus,
+textarea:focus {
   border-color: var(--accent-cyan);
   box-shadow: 0 0 0 2px var(--accent-cyan-glow);
 }
@@ -360,10 +423,25 @@ input:focus, select:focus, textarea:focus {
   text-transform: uppercase;
 }
 
-.badge-status.pending { background: rgba(196, 142, 5, 0.15); color: var(--status-pending); }
-.badge-status.running { background: rgba(212, 137, 14, 0.15); color: var(--status-running); }
-.badge-status.completed { background: rgba(34, 197, 94, 0.15); color: var(--status-completed); }
-.badge-status.failed { background: rgba(239, 68, 68, 0.15); color: var(--status-failed); }
+.badge-status.pending {
+  background: rgba(196, 142, 5, 0.15);
+  color: var(--status-pending);
+}
+
+.badge-status.running {
+  background: rgba(212, 137, 14, 0.15);
+  color: var(--status-running);
+}
+
+.badge-status.completed {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--status-completed);
+}
+
+.badge-status.failed {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--status-failed);
+}
 
 /* Main Layout Grid */
 .layout-container {
@@ -379,7 +457,8 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px 0 80px; /* Space for macOS native traffic light window decorations */
+  padding: 0 16px 0 80px;
+  /* Space for macOS native traffic light window decorations */
   -webkit-app-region: drag;
 }
 

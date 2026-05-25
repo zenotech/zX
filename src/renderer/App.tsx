@@ -620,9 +620,9 @@ export default function App() {
 
       {/* PROJECT LOADING MODAL (GLASSMORPHISM) */}
       {showProjectModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(5, 6, 8, 0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, backdropFilter: 'blur(8px)' }}>
-          <div className="glass-panel animate-slide-up" style={{ width: '480px', padding: '32px', border: '1px solid rgba(255,255,255,0.1)' }}>
-            <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '12px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: theme === 'light' ? 'rgba(0, 0, 0, 0.4)' : 'rgba(5, 6, 8, 0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000, backdropFilter: 'blur(8px)' }}>
+          <div className="glass-panel animate-slide-up" style={{ width: '480px', padding: '32px', border: `1px solid ${theme === 'light' ? 'var(--border-color)' : 'rgba(255,255,255,0.1)'}` }}>
+            <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <FolderOpen style={{ color: 'var(--accent-cyan)' }} /> Select zX Project Space
             </h3>
             <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '24px' }}>
@@ -635,7 +635,7 @@ export default function App() {
                 TARGET ENVIRONMENT
               </label>
               
-              <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1fr', background: '#161210', borderRadius: '8px', padding: '3px', border: '1px solid var(--border-color)', marginBottom: '12px' }}>
+              <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1fr', background: 'var(--bg-primary)', borderRadius: '8px', padding: '3px', border: '1px solid var(--border-color)', marginBottom: '12px' }}>
                 <button 
                   onClick={() => toggleConnection('Local')}
                   className={`btn btn-sm d-flex align-items-center justify-content-center gap-2 py-2 ${connectionType === 'Local' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
@@ -670,7 +670,7 @@ export default function App() {
                         setConnectionStatus('disconnected');
                       }}
                       className="form-select form-select-sm"
-                      style={{ flex: 1, minWidth: 0, background: '#161210', border: '1px solid var(--border-color)' }}
+                      style={{ flex: 1, minWidth: 0, background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
                     >
                       {sshHosts.length === 0 ? (
                         <option value="">No SSH Hosts found in ~/.ssh/config</option>
@@ -729,7 +729,7 @@ export default function App() {
                     value={newProjectPath} 
                     onChange={(e) => setNewProjectPath(e.target.value)}
                     className="form-control form-control-sm"
-                    style={{ flex: 1, minWidth: 0, background: '#161210', border: '1px solid var(--border-color)' }}
+                    style={{ flex: 1, minWidth: 0, background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
                   />
                   {window.zxAPI && (
                     <button
@@ -829,7 +829,7 @@ export default function App() {
                 left: 0,
                 width: '100%',
                 height: '100%',
-                background: 'rgba(10, 11, 16, 0.95)',
+                background: theme === 'light' ? 'rgba(255, 255, 255, 0.98)' : 'rgba(10, 11, 16, 0.95)',
                 borderRadius: '12px',
                 padding: '24px',
                 display: 'flex',
@@ -838,7 +838,7 @@ export default function App() {
                 backdropFilter: 'blur(12px)',
                 animation: 'fadeIn 0.2s ease-out'
               }}>
-                <h4 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '4px', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <h4 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '4px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <FolderSync style={{ color: 'var(--accent-cyan)' }} size={18} /> Browse Remote Directories
                 </h4>
                 <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginBottom: '16px' }}>
@@ -870,7 +870,7 @@ export default function App() {
                       }
                     }}
                     className="form-control form-control-sm"
-                    style={{ flex: 1, minWidth: 0, background: '#161210', border: '1px solid var(--border-color)', height: '32px', fontSize: '12px' }}
+                    style={{ flex: 1, minWidth: 0, background: 'var(--bg-primary)', border: '1px solid var(--border-color)', height: '32px', fontSize: '12px' }}
                   />
                   <button
                     onClick={() => loadRemoteDirectories(remoteBrowserPath)}
@@ -885,7 +885,7 @@ export default function App() {
                 {/* DIRECTORIES LISTING */}
                 <div style={{
                   flex: 1,
-                  background: '#161210',
+                  background: 'var(--bg-primary)',
                   border: '1px solid var(--border-color)',
                   borderRadius: '6px',
                   overflowY: 'auto',
@@ -897,7 +897,7 @@ export default function App() {
                     <div style={{
                       position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                       display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                      background: 'rgba(22, 18, 16, 0.8)', color: 'var(--text-secondary)', fontSize: '13px'
+                      background: theme === 'light' ? 'rgba(250, 248, 245, 0.9)' : 'rgba(22, 18, 16, 0.8)', color: 'var(--text-secondary)', fontSize: '13px'
                     }}>
                       <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '14px', height: '14px' }}></div>
                       <span>Loading directories...</span>

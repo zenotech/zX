@@ -225,7 +225,41 @@ def run_loop_in_thread(
                 user_table = df.copy()
                 
                 logger.info("Executing exploration hook...")
-                new_rows = explore_mod.explore(user_table, state)
+                
+                # Setup explore logging
+                runs_dir = Path(project_path) / "runs"
+                runs_dir.mkdir(parents=True, exist_ok=True)
+                
+                import io
+                log_buffer = io.StringIO()
+                suffix = " (DRY-RUN)" if dry_run else ""
+                log_buffer.write(f"--- zX Stage EXPLORE{suffix} Started at {datetime.now().isoformat()} ---\n")
+                log_buffer.flush()
+                
+                explore_err = None
+                with redirect_stdout_stderr(log_buffer):
+                    try:
+                        new_rows = explore_mod.explore(user_table, state)
+                    except Exception as e:
+                        traceback.print_exc(file=sys.stdout)
+                        explore_err = str(e)
+                        new_rows = None
+
+                # Retrieve the iteration number (representing the iteration just executed)
+                next_iteration = state.get("current_iteration", 1)
+                explore_log_path = runs_dir / f"explore_{next_iteration}.log"
+                
+                log_content = log_buffer.getvalue()
+                if explore_err:
+                    log_content += f"\nExploration Error: {explore_err}\n"
+                    
+                with open(explore_log_path, "w") as f_log:
+                    f_log.write(log_content)
+                    
+                if explore_err:
+                    logger.error(f"Exploration stage failed: {explore_err}")
+                    break
+                    
                 if not new_rows:
                     logger.info("Exploration Hook returned an empty list. Exploration loop terminated cleanly.")
                     break
