@@ -450,9 +450,9 @@ export default function App() {
             }}
           >
             {theme === 'dark' ? (
-              <Sun size={18} style={{ color: '#ffb703' }} />
+              <Sun size={18} style={{ color: '#d4890e' }} />
             ) : (
-              <Moon size={18} style={{ color: '#6366f1' }} />
+              <Moon size={18} style={{ color: '#c4572a' }} />
             )}
           </button>
         </div>
@@ -635,7 +635,7 @@ export default function App() {
                 TARGET ENVIRONMENT
               </label>
               
-              <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1fr', background: '#13151f', borderRadius: '8px', padding: '3px', border: '1px solid var(--border-color)', marginBottom: '12px' }}>
+              <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1fr', background: '#161210', borderRadius: '8px', padding: '3px', border: '1px solid var(--border-color)', marginBottom: '12px' }}>
                 <button 
                   onClick={() => toggleConnection('Local')}
                   className={`btn btn-sm d-flex align-items-center justify-content-center gap-2 py-2 ${connectionType === 'Local' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
@@ -670,7 +670,7 @@ export default function App() {
                         setConnectionStatus('disconnected');
                       }}
                       className="form-select form-select-sm"
-                      style={{ flex: 1, minWidth: 0, background: '#13151f', border: '1px solid var(--border-color)' }}
+                      style={{ flex: 1, minWidth: 0, background: '#161210', border: '1px solid var(--border-color)' }}
                     >
                       {sshHosts.length === 0 ? (
                         <option value="">No SSH Hosts found in ~/.ssh/config</option>
@@ -729,7 +729,7 @@ export default function App() {
                     value={newProjectPath} 
                     onChange={(e) => setNewProjectPath(e.target.value)}
                     className="form-control form-control-sm"
-                    style={{ flex: 1, minWidth: 0, background: '#13151f', border: '1px solid var(--border-color)' }}
+                    style={{ flex: 1, minWidth: 0, background: '#161210', border: '1px solid var(--border-color)' }}
                   />
                   {window.zxAPI && (
                     <button
@@ -790,9 +790,9 @@ export default function App() {
                               className="badge text-uppercase" 
                               style={{ 
                                 fontSize: '10px', 
-                                background: p.server === 'Local' ? 'rgba(99, 102, 241, 0.15)' : 'rgba(0, 240, 255, 0.15)',
+                                background: p.server === 'Local' ? 'rgba(196, 87, 42, 0.15)' : 'rgba(212, 137, 14, 0.15)',
                                 color: p.server === 'Local' ? 'var(--accent-purple)' : 'var(--accent-cyan)',
-                                border: `1px solid ${p.server === 'Local' ? 'rgba(99, 102, 241, 0.3)' : 'rgba(0, 240, 255, 0.3)'}`,
+                                border: `1px solid ${p.server === 'Local' ? 'rgba(196, 87, 42, 0.3)' : 'rgba(212, 137, 14, 0.3)'}`,
                                 padding: '3px 6px',
                                 borderRadius: '4px'
                               }}
@@ -870,7 +870,7 @@ export default function App() {
                       }
                     }}
                     className="form-control form-control-sm"
-                    style={{ flex: 1, minWidth: 0, background: '#13151f', border: '1px solid var(--border-color)', height: '32px', fontSize: '12px' }}
+                    style={{ flex: 1, minWidth: 0, background: '#161210', border: '1px solid var(--border-color)', height: '32px', fontSize: '12px' }}
                   />
                   <button
                     onClick={() => loadRemoteDirectories(remoteBrowserPath)}
@@ -885,7 +885,7 @@ export default function App() {
                 {/* DIRECTORIES LISTING */}
                 <div style={{
                   flex: 1,
-                  background: '#13151f',
+                  background: '#161210',
                   border: '1px solid var(--border-color)',
                   borderRadius: '6px',
                   overflowY: 'auto',
@@ -897,7 +897,7 @@ export default function App() {
                     <div style={{
                       position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                       display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px',
-                      background: 'rgba(19, 21, 31, 0.8)', color: 'var(--text-secondary)', fontSize: '13px'
+                      background: 'rgba(22, 18, 16, 0.8)', color: 'var(--text-secondary)', fontSize: '13px'
                     }}>
                       <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ width: '14px', height: '14px' }}></div>
                       <span>Loading directories...</span>
@@ -905,7 +905,7 @@ export default function App() {
                   ) : null}
 
                   {remoteBrowserError && (
-                    <div className="text-danger small p-2" style={{ border: '1px solid rgba(230, 57, 70, 0.2)', background: 'rgba(230, 57, 70, 0.05)', borderRadius: '4px' }}>
+                    <div className="text-danger small p-2" style={{ border: '1px solid rgba(239, 68, 68, 0.2)', background: 'rgba(239, 68, 68, 0.05)', borderRadius: '4px' }}>
                       <AlertTriangle size={14} className="me-1 d-inline-block" style={{ verticalAlign: 'text-bottom' }} />
                       {remoteBrowserError}
                     </div>
@@ -940,7 +940,7 @@ export default function App() {
                               cursor: 'pointer',
                               fontSize: '13px',
                               color: 'var(--text-primary)',
-                              background: isSelected ? 'rgba(0, 240, 255, 0.08)' : 'transparent',
+                              background: isSelected ? 'rgba(212, 137, 14, 0.08)' : 'transparent',
                               borderLeft: isSelected ? '2px solid var(--accent-cyan)' : '2px solid transparent',
                               transition: 'all 0.15s ease'
                             }}

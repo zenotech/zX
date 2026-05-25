@@ -141,7 +141,7 @@ export default function FileExplorer({ activeProject, apiCall, theme }: FileExpl
             paddingLeft: `${depth * 16 + 12}px`,
             fontSize: '13px',
             color: isSelected ? 'var(--accent-cyan)' : 'var(--text-primary)',
-            background: isSelected ? 'rgba(0,240,255,0.04)' : 'transparent',
+            background: isSelected ? 'rgba(212,137,14,0.04)' : 'transparent',
             borderRadius: '4px',
             cursor: 'pointer',
             transition: 'background 0.2s',
@@ -271,7 +271,7 @@ export default function FileExplorer({ activeProject, apiCall, theme }: FileExpl
             </div>
 
             {/* Monaco Preview Body */}
-            <div style={{ flexGrow: 1, position: 'relative', background: theme === 'light' ? '#ffffff' : '#1e1e24' }}>
+            <div style={{ flexGrow: 1, position: 'relative', background: theme === 'light' ? '#ffffff' : '#1a1614' }}>
               {loadingContent ? (
                 <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: theme === 'light' ? 'var(--bg-primary)' : '#0d0e12', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10, gap: '8px', color: 'var(--text-secondary)' }}>
                   <div className="spinner-border spinner-border-sm text-primary" role="status"></div> Loading file content...

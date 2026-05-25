@@ -106,7 +106,7 @@ export default function VisualizationDashboard({
     
     // Color axis map
     let markerSettings: any = {
-      color: theme === 'light' ? '#0284c7' : '#00f0ff',
+      color: theme === 'light' ? '#bd6c0a' : '#d4890e',
       size: 10,
       line: { color: theme === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.2)', width: 1 }
     };
@@ -125,7 +125,7 @@ export default function VisualizationDashboard({
       return [{
         x: xData,
         type: 'histogram',
-        marker: { color: 'rgba(155, 93, 229, 0.7)', line: { color: theme === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.2)', width: 1 } },
+        marker: { color: 'rgba(196, 87, 42, 0.7)', line: { color: theme === 'light' ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.2)', width: 1 } },
         name: xAxis
       }];
     }
@@ -137,7 +137,7 @@ export default function VisualizationDashboard({
       type: 'scatter',
       marker: markerSettings,
       name: `${yAxis} vs ${xAxis}`,
-      line: chartType === 'line' ? { color: theme === 'light' ? '#7c3aed' : '#9b5de5', width: 2 } : undefined
+      line: chartType === 'line' ? { color: theme === 'light' ? '#a04520' : '#c4572a', width: 2 } : undefined
     }];
   };
 
@@ -147,18 +147,18 @@ export default function VisualizationDashboard({
       autosize: true,
       paper_bgcolor: 'rgba(0,0,0,0)',
       plot_bgcolor: 'rgba(0,0,0,0)',
-      font: { color: isLight ? '#0f172a' : '#ffffff', family: 'Outfit, var(--font-sans)' },
+      font: { color: isLight ? '#1a1410' : '#ffffff', family: 'Outfit, var(--font-sans)' },
       xaxis: {
-        title: { text: xAxis, font: { color: isLight ? '#475569' : '#949eb5' } },
-        gridcolor: isLight ? '#e2e8f0' : '#1e2130',
-        zerolinecolor: isLight ? '#cbd5e1' : '#2a2f42',
-        tickfont: { color: isLight ? '#475569' : '#949eb5' }
+        title: { text: xAxis, font: { color: isLight ? '#5c4f42' : '#a09484' } },
+        gridcolor: isLight ? '#e0d5c8' : '#2e2519',
+        zerolinecolor: isLight ? '#d4c7b8' : '#3a3025',
+        tickfont: { color: isLight ? '#5c4f42' : '#a09484' }
       },
       yaxis: {
-        title: { text: chartType === 'histogram' ? 'Frequency' : yAxis, font: { color: isLight ? '#475569' : '#949eb5' } },
-        gridcolor: isLight ? '#e2e8f0' : '#1e2130',
-        zerolinecolor: isLight ? '#cbd5e1' : '#2a2f42',
-        tickfont: { color: isLight ? '#475569' : '#949eb5' }
+        title: { text: chartType === 'histogram' ? 'Frequency' : yAxis, font: { color: isLight ? '#5c4f42' : '#a09484' } },
+        gridcolor: isLight ? '#e0d5c8' : '#2e2519',
+        zerolinecolor: isLight ? '#d4c7b8' : '#3a3025',
+        tickfont: { color: isLight ? '#5c4f42' : '#a09484' }
       },
       margin: { l: 60, r: 40, t: 40, b: 60 },
       hovermode: 'closest'
@@ -265,7 +265,7 @@ export default function VisualizationDashboard({
                       onChange={(e) => setColorAxis(e.target.value)} 
                       className="form-select form-select-sm bg-dark border-secondary text-white"
                     >
-                      <option value="">-- Static Cyan --</option>
+                      <option value="">-- Static Amber --</option>
                       {columns.map(col => <option key={col} value={col}>{col.replace('_zx_', '')}</option>)}
                     </select>
                   </div>
@@ -347,17 +347,17 @@ export default function VisualizationDashboard({
                   autosize: true,
                   paper_bgcolor: 'rgba(0,0,0,0)',
                   plot_bgcolor: 'rgba(0,0,0,0)',
-                  font: { color: isLight ? '#0f172a' : '#ffffff', family: 'Outfit, var(--font-sans)', ...(fig.layout?.font || {}) },
+                  font: { color: isLight ? '#1a1410' : '#ffffff', family: 'Outfit, var(--font-sans)', ...(fig.layout?.font || {}) },
                   xaxis: {
-                    gridcolor: isLight ? '#e2e8f0' : '#1e2130',
-                    zerolinecolor: isLight ? '#cbd5e1' : '#2a2f42',
-                    tickfont: { color: isLight ? '#475569' : '#949eb5' },
+                    gridcolor: isLight ? '#e0d5c8' : '#2e2519',
+                    zerolinecolor: isLight ? '#d4c7b8' : '#3a3025',
+                    tickfont: { color: isLight ? '#5c4f42' : '#a09484' },
                     ...(fig.layout?.xaxis || {})
                   },
                   yaxis: {
-                    gridcolor: isLight ? '#e2e8f0' : '#1e2130',
-                    zerolinecolor: isLight ? '#cbd5e1' : '#2a2f42',
-                    tickfont: { color: isLight ? '#475569' : '#949eb5' },
+                    gridcolor: isLight ? '#e0d5c8' : '#2e2519',
+                    zerolinecolor: isLight ? '#d4c7b8' : '#3a3025',
+                    tickfont: { color: isLight ? '#5c4f42' : '#a09484' },
                     ...(fig.layout?.yaxis || {})
                   }
                 };

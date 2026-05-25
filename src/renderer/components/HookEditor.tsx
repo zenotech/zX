@@ -159,7 +159,7 @@ export default function HookEditor({ activeProject, apiCall, theme }: HookEditor
         </div>
 
         {/* Monaco Editor Container */}
-        <div style={{ flexGrow: 1, position: 'relative', background: theme === 'light' ? '#ffffff' : '#1e1e24' }}>
+        <div style={{ flexGrow: 1, position: 'relative', background: theme === 'light' ? '#ffffff' : '#1a1614' }}>
           {loading ? (
             <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: theme === 'light' ? 'var(--bg-primary)' : '#0d0e12', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10, gap: '8px', color: 'var(--text-secondary)' }}>
               <div className="spinner-border spinner-border-sm text-primary" role="status"></div> Loading hook code...
@@ -188,7 +188,7 @@ export default function HookEditor({ activeProject, apiCall, theme }: HookEditor
 
         {/* Bottom syntax logs terminal */}
         {saveStatus === 'syntax_error' && errorDetails && (
-          <div className="alert alert-danger mb-0 border-0 rounded-0 d-flex flex-column gap-2" style={{ height: '140px', background: '#1c1216', borderTop: '1px solid var(--zui-danger)', padding: '16px', overflowY: 'auto' }}>
+          <div className="alert alert-danger mb-0 border-0 rounded-0 d-flex flex-column gap-2" style={{ height: '140px', background: '#1c1210', borderTop: '1px solid var(--zui-danger)', padding: '16px', overflowY: 'auto' }}>
             <span className="fw-bold d-flex align-items-center gap-2 small text-danger">
               <AlertCircle size={14} /> PYTHON SYNTAX VERIFICATION FAILURE
             </span>

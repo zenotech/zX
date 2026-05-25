@@ -145,18 +145,18 @@ function TerminalWindow({ instanceId, authToken, port, isActive, theme }: Termin
       cursorBlink: true,
       cursorStyle: 'underline',
       theme: {
-        background: theme === 'light' ? '#f8f9fa' : '#0d0e12',
-        foreground: theme === 'light' ? '#0f172a' : '#e4f3fa',
-        cursor: theme === 'light' ? '#0284c7' : '#00f0ff',
-        selectionBackground: theme === 'light' ? 'rgba(2, 132, 199, 0.2)' : 'rgba(0, 240, 255, 0.2)',
-        black: theme === 'light' ? '#cbd5e1' : '#151720',
-        red: '#e63946',
-        green: '#2ec4b6',
-        yellow: '#f5a623',
-        blue: theme === 'light' ? '#0284c7' : '#2a9d8f',
-        magenta: '#9b5de5',
-        cyan: theme === 'light' ? '#0284c7' : '#00f0ff',
-        white: theme === 'light' ? '#0f172a' : '#dec9e9'
+        background: theme === 'light' ? '#faf8f5' : '#0d0e12',
+        foreground: theme === 'light' ? '#1a1410' : '#e6ebf1',
+        cursor: theme === 'light' ? '#bd6c0a' : '#d4890e',
+        selectionBackground: theme === 'light' ? 'rgba(189, 108, 10, 0.2)' : 'rgba(212, 137, 14, 0.2)',
+        black: theme === 'light' ? '#e0d5c8' : '#151210',
+        red: '#ef4444',
+        green: '#22c55e',
+        yellow: '#c48e05',
+        blue: theme === 'light' ? '#4c82f7' : '#4c82f7',
+        magenta: '#c4572a',
+        cyan: theme === 'light' ? '#bd6c0a' : '#d4890e',
+        white: theme === 'light' ? '#1a1410' : '#e6e0d8'
       },
       fontFamily: 'JetBrains Mono, Fira Code, var(--font-mono)',
       fontSize: 13,
@@ -255,18 +255,18 @@ function TerminalWindow({ instanceId, authToken, port, isActive, theme }: Termin
   useEffect(() => {
     if (termRef.current) {
       termRef.current.options.theme = {
-        background: theme === 'light' ? '#f8f9fa' : '#0d0e12',
-        foreground: theme === 'light' ? '#0f172a' : '#e4f3fa',
-        cursor: theme === 'light' ? '#0284c7' : '#00f0ff',
-        selectionBackground: theme === 'light' ? 'rgba(2, 132, 199, 0.2)' : 'rgba(0, 240, 255, 0.2)',
-        black: theme === 'light' ? '#cbd5e1' : '#151720',
-        red: '#e63946',
-        green: '#2ec4b6',
-        yellow: '#f5a623',
-        blue: theme === 'light' ? '#0284c7' : '#2a9d8f',
-        magenta: '#9b5de5',
-        cyan: theme === 'light' ? '#0284c7' : '#00f0ff',
-        white: theme === 'light' ? '#0f172a' : '#dec9e9'
+        background: theme === 'light' ? '#faf8f5' : '#0d0e12',
+        foreground: theme === 'light' ? '#1a1410' : '#e6ebf1',
+        cursor: theme === 'light' ? '#bd6c0a' : '#d4890e',
+        selectionBackground: theme === 'light' ? 'rgba(189, 108, 10, 0.2)' : 'rgba(212, 137, 14, 0.2)',
+        black: theme === 'light' ? '#e0d5c8' : '#151210',
+        red: '#ef4444',
+        green: '#22c55e',
+        yellow: '#c48e05',
+        blue: theme === 'light' ? '#4c82f7' : '#4c82f7',
+        magenta: '#c4572a',
+        cyan: theme === 'light' ? '#bd6c0a' : '#d4890e',
+        white: theme === 'light' ? '#1a1410' : '#e6e0d8'
       };
     }
   }, [theme]);
