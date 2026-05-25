@@ -422,3 +422,24 @@ input:focus, select:focus, textarea:focus {
   color: var(--text-secondary);
   font-family: var(--font-sans);
 }
+
+/* Checkbox & Stage Name Alignment - Premium layout overrides */
+.form-check {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px;
+  padding-left: 0 !important;
+  margin-bottom: 0;
+}
+
+.form-check .form-check-input {
+  float: none !important;
+  margin: 0 !important;
+  cursor: pointer;
+}
+
+.form-check .form-check-label {
+  margin-bottom: 0;
+  cursor: pointer;
+  user-select: none;
+}
