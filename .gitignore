@@ -1,0 +1,10 @@
+node_modules
+.venv
+dist-electron
+
+__pycache__
+
+release
+dist
+build
+*.egg-info

@@ -1,0 +1,94 @@
+{
+  "name": "zx-parametric-exploration",
+  "version": "0.1.0",
+  "description": "zX Parametric Exploration Desktop Application",
+  "author": "Zenotech Ltd <info@zenotech.com>",
+  "homepage": "https://github.com/zenotech/zX",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zenotech/zX.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zenotech/zX/issues"
+  },
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run package",
+    "build:renderer": "tsc && vite build",
+    "electron:dev": "tsc -p tsconfig.electron.json && electron .",
+    "electron:build": "tsc -p tsconfig.electron.json",
+    "dev:all": "concurrently -k \"npm run dev\" \"npm run electron:dev\"",
+    "package": "npm run electron:build && npm run build:renderer && electron-builder"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.6.0",
+    "@types/ssh2": "^1.15.5",
+    "lucide-react": "^0.379.0",
+    "plotly.js-basic-dist": "^2.32.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-plotly.js": "^2.6.0",
+    "ssh2": "^1.17.0",
+    "xterm": "^5.3.0",
+    "xterm-addon-fit": "^0.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.12",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^8.2.2",
+    "electron": "^30.0.6",
+    "electron-builder": "^24.13.3",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  },
+  "build": {
+    "appId": "com.zenotech.zx",
+    "productName": "zX",
+    "copyright": "Copyright © 2026 Zenotech Ltd.",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "templates/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": [
+          "**/*",
+          "!**/*.pyc",
+          "!**/__pycache__",
+          "!**/.venv",
+          "!**/.pytest_cache",
+          "!**/tests"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": "build/icon.png",
+      "notarize": {
+        "teamId": "HDDG45ZM4G"
+      }
+    },
+    "win": {
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "build/icon.png",
+      "maintainer": "Zenotech Ltd <info@zenotech.com>",
+      "vendor": "Zenotech Ltd"
+    }
+  }
+}

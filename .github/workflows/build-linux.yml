@@ -1,0 +1,67 @@
+name: Build Electron App for Linux
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: Build Linux Packages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: 'latest'
+
+      - name: Build Python Backend Wheel
+        run: |
+          echo "Building backend wheel package..."
+          cd backend
+          uv build --wheel
+          echo "Verifying generated wheel..."
+          ls -la dist/
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node Dependencies
+        run: npm ci || npm install
+
+      - name: Compile and Package App for Linux
+        run: |
+          echo "Running packaging scripts..."
+          npm run package
+        env:
+          # Inform electron-builder to skip macOS/Windows targets if any were triggered
+          # and ensure we do not try to run codesign or notarization in this environment
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Upload Packaged Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zX-linux-packages
+          path: |
+            release/*.AppImage
+            release/*.deb
+          if-no-files-found: error
+          retention-days: 7

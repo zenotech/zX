@@ -1,0 +1,480 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Play, Square, Plus, Trash2, ShieldAlert, FileInput, 
+  RefreshCw, CheckSquare, SquareCheck, RefreshCwOff, ShieldCheck, HelpCircle
+} from 'lucide-react';
+
+interface DataGridProps {
+  authToken: string;
+  port: number;
+  running: boolean;
+  setRunning: (running: boolean) => void;
+  activeProject: string;
+  apiCall: (endpoint: string, method?: string, body?: any) => Promise<any>;
+}
+
+export default function DataGrid({ authToken, port, running, setRunning, activeProject, apiCall }: DataGridProps) {
+  const [data, setData] = useState<any[]>([]);
+  const [columns, setColumns] = useState<string[]>([]);
+  const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [editingCell, setEditingCell] = useState<{ rowIdx: number, colKey: string } | null>(null);
+  const [editValue, setEditValue] = useState<string>('');
+  
+  // Execution options
+  const [execPreprocess, setExecPreprocess] = useState(true);
+  const [execLaunch, setExecLaunch] = useState(true);
+  const [execExtract, setExecExtract] = useState(true);
+  const [execExplore, setExecExplore] = useState(true);
+  const [forceRerun, setForceRerun] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const updateColumnsFromData = (db: any[]) => {
+    if (db && db.length > 0) {
+      // Exclude reserved columns from quick editable list but keep them for reference
+      const allCols = Object.keys(db[0]);
+      // Sort columns: user parameters first, then reserved _zx_ columns at the end
+      const userCols = allCols.filter(c => !c.startsWith('_zx_'));
+      const zxCols = allCols.filter(c => c.startsWith('_zx_'));
+      setColumns([...userCols, ...zxCols]);
+    }
+  };
+
+  // Fetch data
+  const fetchData = async () => {
+    if (!activeProject) return;
+    try {
+      const db = await apiCall('/api/database');
+      setData(db);
+      updateColumnsFromData(db);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+    // Poll data during running state
+    let interval: any;
+    if (running) {
+      interval = setInterval(fetchData, 1500);
+    }
+    return () => clearInterval(interval);
+  }, [activeProject, running]);
+
+  // Save changes back to DB
+  const saveChanges = async (updatedData: any[]) => {
+    try {
+      await apiCall('/api/database/update', 'POST', { rows: updatedData });
+      setData(updatedData);
+    } catch (err) {
+      console.error('Failed to save cell edit', err);
+    }
+  };
+
+  const handleCellClick = (rowIdx: number, colKey: string, val: any) => {
+    if (running) return; // Locked during run
+    if (colKey.startsWith('_zx_')) return; // Can't edit system columns
+    setEditingCell({ rowIdx, colKey });
+    setEditValue(val !== null && val !== undefined ? String(val) : '');
+  };
+
+  const handleCellSave = () => {
+    if (!editingCell) return;
+    const { rowIdx, colKey } = editingCell;
+    const updated = [...data];
+    
+    // Parse to number if numeric
+    const isNum = !isNaN(Number(editValue)) && editValue.trim() !== '';
+    updated[rowIdx][colKey] = isNum ? Number(editValue) : editValue;
+    
+    saveChanges(updated);
+    setEditingCell(null);
+  };
+
+  const handleAddRow = () => {
+    if (running) return;
+    
+    // Create new row with base column defaults
+    const newRow: any = {};
+    const nextId = data.length > 0 ? Math.max(...data.map(r => r._zx_row_id)) + 1 : 0;
+    columns.forEach(col => {
+      if (col === '_zx_row_id') {
+        newRow[col] = nextId;
+      } else if (col === '_zx_status') {
+        newRow[col] = 'pending';
+      } else if (col === '_zx_iteration') {
+        newRow[col] = 0;
+      } else if (col.startsWith('_zx_')) {
+        newRow[col] = '';
+      } else {
+        newRow[col] = 0.0; // Default float
+      }
+    });
+
+    const updated = [...data, newRow];
+    saveChanges(updated);
+  };
+
+  const handleDelete = () => {
+    if (running || data.length === 0) return;
+    
+    const isDeletingAll = selectedRows.length === 0 || selectedRows.length === data.length;
+    
+    if (isDeletingAll) {
+      if (!window.confirm("Are you sure you want to delete all rows in the table? This cannot be undone.")) {
+        return;
+      }
+      setSelectedRows([]);
+      saveChanges([]);
+    } else {
+      const updated = data
+        .filter(r => !selectedRows.includes(r._zx_row_id));
+      
+      setSelectedRows([]);
+      saveChanges(updated);
+    }
+  };
+
+  const handleCheckboxToggle = (rowId: number, e: React.MouseEvent) => {
+    if (e.shiftKey && selectedRows.length > 0) {
+      // Range selection
+      const lastSelected = selectedRows[selectedRows.length - 1];
+      const lastIdx = data.findIndex(r => r._zx_row_id === lastSelected);
+      const clickIdx = data.findIndex(r => r._zx_row_id === rowId);
+      if (lastIdx !== -1 && clickIdx !== -1) {
+        const start = Math.min(lastIdx, clickIdx);
+        const end = Math.max(lastIdx, clickIdx);
+        const range: number[] = [];
+        for (let i = start; i <= end; i++) {
+          range.push(data[i]._zx_row_id);
+        }
+        setSelectedRows(Array.from(new Set([...selectedRows, ...range])));
+      }
+    } else {
+      if (selectedRows.includes(rowId)) {
+        setSelectedRows(selectedRows.filter(id => id !== rowId));
+      } else {
+        setSelectedRows([...selectedRows, rowId]);
+      }
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedRows.length === data.length) {
+      setSelectedRows([]);
+    } else {
+      setSelectedRows(data.map(r => r._zx_row_id));
+    }
+  };
+
+  const handleTriggerInitialize = async () => {
+    if (running) return;
+    try {
+      const res = await apiCall('/api/database/initialize', 'POST');
+      setData(res);
+      updateColumnsFromData(res);
+    } catch (err) {
+      alert('Initialization Hook failed! Check hook scripts.');
+    }
+  };
+
+  const handleImportCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/api/database/import`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: formData
+      });
+      if (response.ok) {
+        const db = await response.json();
+        setData(db);
+        updateColumnsFromData(db);
+        alert('CSV imported successfully!');
+      } else {
+        alert('Failed importing CSV');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const triggerExecution = async (isDryRun: boolean) => {
+    if (!activeProject) return;
+    try {
+      const selected = selectedRows.length > 0 ? selectedRows : data.map(r => r._zx_row_id);
+      
+      const hooksList = [];
+      if (execPreprocess) hooksList.push('preprocessing');
+      if (execLaunch) hooksList.push('launching');
+      if (execExtract) hooksList.push('extracting');
+      if (execExplore) hooksList.push('exploring');
+
+      setRunning(true);
+
+      await apiCall('/api/run/start', 'POST', {
+        row_ids: selected,
+        hooks: hooksList,
+        dry_run: isDryRun,
+        force: forceRerun
+      });
+    } catch (err) {
+      console.error('Failed triggering run', err);
+      setRunning(false);
+    }
+  };
+
+  const triggerStop = async () => {
+    try {
+      await apiCall('/api/run/stop', 'POST');
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="d-flex flex-column h-100 gap-3" style={{ animation: 'slideUp 0.3s ease-out' }}>
+      
+      {/* GRID CONTROLS HEADER */}
+      <div className="card p-3 mb-1 d-flex flex-row flex-wrap align-items-center justify-content-between gap-3 shadow-sm">
+        
+        {/* Left Actions: Data Manipulation */}
+        <div className="d-flex align-items-center gap-2">
+          <button 
+            onClick={handleAddRow}
+            className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" 
+            disabled={running} 
+            title="Insert a new row to grid"
+          >
+            <Plus size={14} /> Add Row
+          </button>
+          
+          <button 
+            onClick={handleDelete}
+            className="btn btn-sm btn-outline-danger d-flex align-items-center gap-1" 
+            disabled={running || data.length === 0}
+            title={selectedRows.length > 0 ? "Delete selected rows" : "Delete all rows"}
+          >
+            <Trash2 size={14} /> 
+            Delete
+          </button>
+
+          <div style={{ height: '20px', width: '1px', background: 'var(--border-color)', margin: '0 4px' }} />
+
+          <button 
+            onClick={handleTriggerInitialize}
+            className="btn btn-sm btn-outline-warning d-flex align-items-center gap-1" 
+            disabled={running}
+            title="Procedurally generate rows via initialize.py"
+          >
+            <RefreshCw size={14} /> Init Hook
+          </button>
+
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" 
+            disabled={running}
+            title="Import custom parameter CSV file"
+          >
+            <FileInput size={14} /> Import CSV
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleImportCSV} 
+            accept=".csv" 
+            style={{ display: 'none' }} 
+          />
+        </div>
+
+        {/* Middle Checkboxes: Hook Selection */}
+        <div className="d-flex align-items-center gap-3 px-3 py-2 bg-dark bg-opacity-25 rounded border border-secondary" style={{ fontSize: '13px' }}>
+          <span className="text-secondary fw-semibold me-1">HOOK STAGES:</span>
+          <div className="form-check form-check-inline mb-0">
+            <input className="form-check-input" type="checkbox" id="preprocess-stage" checked={execPreprocess} onChange={() => setExecPreprocess(!execPreprocess)} disabled={running} style={{ cursor: 'pointer' }} />
+            <label className="form-check-label text-light" htmlFor="preprocess-stage" style={{ cursor: 'pointer' }}>Preprocess</label>
+          </div>
+          <div className="form-check form-check-inline mb-0">
+            <input className="form-check-input" type="checkbox" id="launch-stage" checked={execLaunch} onChange={() => setExecLaunch(!execLaunch)} disabled={running} style={{ cursor: 'pointer' }} />
+            <label className="form-check-label text-light" htmlFor="launch-stage" style={{ cursor: 'pointer' }}>Launch</label>
+          </div>
+          <div className="form-check form-check-inline mb-0">
+            <input className="form-check-input" type="checkbox" id="extract-stage" checked={execExtract} onChange={() => setExecExtract(!execExtract)} disabled={running} style={{ cursor: 'pointer' }} />
+            <label className="form-check-label text-light" htmlFor="extract-stage" style={{ cursor: 'pointer' }}>Extract</label>
+          </div>
+          <div className="form-check form-check-inline mb-0">
+            <input className="form-check-input" type="checkbox" id="explore-stage" checked={execExplore} onChange={() => setExecExplore(!execExplore)} disabled={running} style={{ cursor: 'pointer' }} />
+            <label className="form-check-label text-light" htmlFor="explore-stage" style={{ cursor: 'pointer' }}>Explore Loop</label>
+          </div>
+        </div>
+
+        {/* Right Actions: Execution Triggers */}
+        <div className="d-flex align-items-center gap-2">
+          <div className="form-check me-2 mb-0">
+            <input className="form-check-input" type="checkbox" id="force-rerun" checked={forceRerun} onChange={() => setForceRerun(!forceRerun)} disabled={running} style={{ cursor: 'pointer' }} />
+            <label className="form-check-label text-secondary small" htmlFor="force-rerun" style={{ cursor: 'pointer' }}>Force Re-run</label>
+          </div>
+
+          <button 
+            onClick={() => triggerExecution(true)}
+            className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" 
+            disabled={running || data.length === 0}
+            title="Dry run chosen hooks without changing state"
+          >
+            <HelpCircle size={14} /> Dry Run
+          </button>
+
+          {running ? (
+            <button 
+              onClick={triggerStop}
+              className="btn btn-sm btn-danger d-flex align-items-center gap-1 px-3" 
+            >
+              <Square size={14} fill="#fff" /> Stop Loop
+            </button>
+          ) : (
+            <button 
+              onClick={() => triggerExecution(false)}
+              className="btn btn-sm btn-primary d-flex align-items-center gap-1 px-3 text-white" 
+              disabled={data.length === 0}
+            >
+              <Play size={14} fill="#fff" /> Start Run
+            </button>
+          )}
+        </div>
+
+      </div>
+
+      {/* PARAMETERS TABLE GRID */}
+      <div className="glass-panel" style={{ flexGrow: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+        {data.length === 0 ? (
+          <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', gap: '12px', padding: '40px' }}>
+            <ShieldAlert size={48} style={{ color: 'var(--status-pending)' }} />
+            <span style={{ fontSize: '16px', fontWeight: 500 }}>No Parametric Data Loaded</span>
+            <span style={{ fontSize: '13px', textAlign: 'center', maxWidth: '320px' }}>
+              Import a CSV parameter file or click **Init Hook** to procedurally create initial exploration vectors.
+            </span>
+          </div>
+        ) : (
+          <div style={{ overflow: 'auto', flexGrow: 1 }}>
+            <table className="table table-hover table-striped align-middle mb-0 text-left" style={{ fontSize: '13px' }}>
+              <thead>
+                <tr className="table-dark" style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                  <th style={{ width: '48px', textAlign: 'center', padding: '12px' }}>
+                    <input 
+                      type="checkbox" 
+                      className="form-check-input"
+                      checked={selectedRows.length === data.length}
+                      onChange={handleSelectAll}
+                    />
+                  </th>
+                  {columns.map(col => (
+                    <th 
+                      key={col} 
+                      style={{ 
+                        padding: '12px 16px', 
+                        color: col.startsWith('_zx_') ? 'var(--accent-purple)' : 'var(--text-primary)',
+                        fontFamily: col.startsWith('_zx_') ? 'var(--font-sans)' : 'var(--font-mono)',
+                        fontWeight: 600,
+                        borderRight: '1px solid var(--border-color)'
+                      }}
+                    >
+                      {col.replace('_zx_', '')}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.map((row, rowIdx) => {
+                  const isRowSelected = selectedRows.includes(row._zx_row_id);
+                  const status = row._zx_status || 'pending';
+                  
+                  return (
+                    <tr 
+                      key={row._zx_row_id} 
+                      className={isRowSelected ? 'table-primary bg-opacity-10' : ''}
+                      style={{ 
+                        transition: 'background 0.2s'
+                      }}
+                    >
+                      <td style={{ textAlign: 'center', borderRight: '1px solid var(--border-color)', padding: '8px' }}>
+                        <input 
+                          type="checkbox" 
+                          className="form-check-input"
+                          checked={isRowSelected}
+                          onClick={(e) => handleCheckboxToggle(row._zx_row_id, e)}
+                          onChange={() => {}}
+                        />
+                      </td>
+                      
+                      {columns.map(col => {
+                        const cellVal = row[col];
+                        const isSystem = col.startsWith('_zx_');
+                        const isEditing = editingCell?.rowIdx === rowIdx && editingCell?.colKey === col;
+                        
+                        return (
+                           <td 
+                            key={col} 
+                            onClick={() => handleCellClick(rowIdx, col, cellVal)}
+                            style={{ 
+                              padding: '8px 16px', 
+                              fontFamily: isSystem ? 'var(--font-sans)' : 'var(--font-mono)',
+                              color: isSystem ? 'var(--text-secondary)' : 'var(--text-primary)',
+                              borderRight: '1px solid var(--border-color)',
+                              cursor: (running || isSystem) ? 'default' : 'double-click'
+                            }}
+                          >
+                            {isEditing ? (
+                              <input 
+                                type="text"
+                                value={editValue}
+                                onChange={(e) => setEditValue(e.target.value)}
+                                onBlur={handleCellSave}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleCellSave();
+                                  if (e.key === 'Escape') setEditingCell(null);
+                                }}
+                                autoFocus
+                                className="form-control form-control-sm py-0 px-2"
+                                style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', border: '1px solid var(--accent-cyan)' }}
+                              />
+                            ) : (
+                              col === '_zx_status' ? (
+                                <span className={`badge ${
+                                  status === 'completed' ? 'bg-success' : 
+                                  status === 'running' ? 'bg-info text-dark' : 
+                                  status === 'failed' ? 'bg-danger' : 
+                                  'bg-warning text-dark'
+                                } text-uppercase font-monospace`} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '12px' }}>
+                                  {status}
+                                </span>
+                              ) : col === '_zx_error' && cellVal ? (
+                                <span style={{ color: 'var(--status-failed)', fontSize: '11px', display: 'block', maxWidth: '240px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={cellVal}>
+                                  {cellVal}
+                                </span>
+                              ) : (
+                                cellVal !== null && cellVal !== undefined ? String(cellVal) : ''
+                              )
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+    </div>
+  );
+}
