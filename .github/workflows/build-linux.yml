@@ -1,24 +1,38 @@
-name: Build Electron App for Linux
+name: Release Linux Build
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
-  build-linux:
-    name: Build Linux Packages
+  release-linux:
+    name: Build & Release Linux Packages
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Validate Version Input
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "::error::Invalid version format '$VERSION'. Expected semver (e.g. 1.0.0 or 1.0.0-beta.1)"
+            exit 1
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Update package.json Version
+        run: |
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+          echo "package.json version set to $VERSION"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -52,11 +66,9 @@ jobs:
           echo "Running packaging scripts..."
           npm run package
         env:
-          # Inform electron-builder to skip macOS/Windows targets if any were triggered
-          # and ensure we do not try to run codesign or notarization in this environment
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Upload Packaged Artifacts
+      - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: zX-linux-packages
@@ -64,4 +76,22 @@ jobs:
             release/*.AppImage
             release/*.deb
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ env.VERSION }}"
+          name: "zX v${{ env.VERSION }}"
+          body: |
+            ## zX v${{ env.VERSION }}
+
+            ### Linux Distribution
+            - **AppImage** – Portable, run anywhere
+            - **deb** – Debian/Ubuntu installer
+          draft: false
+          prerelease: ${{ contains(env.VERSION, '-') }}
+          files: |
+            release/*.AppImage
+            release/*.deb
+          generate_release_notes: true
