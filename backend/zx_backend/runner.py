@@ -201,7 +201,7 @@ def run_loop_in_thread(
                         
                 # Success
                 if not runner_state.stop_requested:
-                    update_row_status(project_path, row_id, "completed", stage="")
+                    update_row_status(project_path, row_id, "completed")
             
             # Check for stop request before running exploration
             if runner_state.stop_requested:
@@ -373,12 +373,13 @@ def execute_stage(
     except Exception as io_err:
         return f"Logging I/O Error: {str(io_err)}"
 
-def update_row_status(project_path: str, row_id: int, status: str, stage: str = ""):
+def update_row_status(project_path: str, row_id: int, status: str, stage: Optional[str] = None):
     df = load_database(project_path)
     idx = df[df["_zx_row_id"] == row_id].index
     if not idx.empty:
         df.loc[idx, "_zx_status"] = status
-        df.loc[idx, "_zx_hook_stage"] = stage
+        if stage is not None:
+            df.loc[idx, "_zx_hook_stage"] = stage
         df.loc[idx, "_zx_run_dir"] = str(Path(project_path) / "runs" / f"run_{row_id}")
         
         now_str = datetime.now().isoformat()
@@ -395,7 +396,6 @@ def mark_row_failed(project_path: str, row_id: int, error_msg: str):
     idx = df[df["_zx_row_id"] == row_id].index
     if not idx.empty:
         df.loc[idx, "_zx_status"] = "failed"
-        df.loc[idx, "_zx_hook_stage"] = ""
         df.loc[idx, "_zx_error"] = error_msg
         df.loc[idx, "_zx_completed_at"] = datetime.now().isoformat()
         save_database(project_path, df)
