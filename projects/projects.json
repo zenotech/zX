@@ -1,5 +1,10 @@
 [
   {
+    "id": "zcfd",
+    "name": "zCFD analysis",
+    "description": "CFD analysis"
+  },
+  {
     "id": "six_hump_camel",
     "name": "Kriging Optimisation - six hump camel",
     "description": "Kriging surrogate model-based optimization of the Six-Hump Camel back function, minimizing a two-dimensional test function with six local minima."
