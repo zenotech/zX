@@ -552,14 +552,18 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
             <label className="form-check-label text-secondary small" htmlFor="force-rerun" style={{ cursor: 'pointer' }}>Force Re-run</label>
           </div>
 
-          <button 
-            onClick={() => triggerExecution(true)}
-            className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" 
-            disabled={running || data.length === 0}
-            title="Dry run chosen hooks without changing state"
+          <span 
+            title={running ? "Dry run disabled while loop is active" : (selectedRows.length === 0 ? "Select rows to run" : "Dry run chosen hooks without changing state")}
+            className="d-inline-block"
           >
-            <HelpCircle size={14} /> Dry Run
-          </button>
+            <button 
+              onClick={() => triggerExecution(true)}
+              className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" 
+              disabled={running || selectedRows.length === 0}
+            >
+              <HelpCircle size={14} /> Dry Run
+            </button>
+          </span>
 
           {running ? (
             <button 
@@ -569,13 +573,18 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
               <Square size={14} fill="#fff" /> Stop Loop
             </button>
           ) : (
-            <button 
-              onClick={() => triggerExecution(false)}
-              className="btn btn-sm btn-primary d-flex align-items-center gap-1 px-3 text-white" 
-              disabled={data.length === 0}
+            <span 
+              title={selectedRows.length === 0 ? "Select rows to run" : ""}
+              className="d-inline-block"
             >
-              <Play size={14} fill="#fff" /> Start Run
-            </button>
+              <button 
+                onClick={() => triggerExecution(false)}
+                className="btn btn-sm btn-primary d-flex align-items-center gap-1 px-3 text-white" 
+                disabled={selectedRows.length === 0}
+              >
+                <Play size={14} fill="#fff" /> Start Run
+              </button>
+            </span>
           )}
         </div>
 

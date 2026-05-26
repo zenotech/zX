@@ -416,13 +416,18 @@ textarea:focus {
 input:disabled,
 select:disabled,
 textarea:disabled,
+button:disabled,
+.btn:disabled,
 [data-theme='light'] input:disabled,
-[data-theme='light'] select:disabled {
+[data-theme='light'] select:disabled,
+[data-theme='light'] button:disabled,
+[data-theme='light'] .btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
   background-color: var(--bg-secondary) !important;
   border-color: var(--border-color) !important;
   box-shadow: none !important;
+  transform: none !important;
 }
 
 /* Status Indicator */

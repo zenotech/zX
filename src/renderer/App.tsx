@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Play, Square, Compass, Database, FileCode2, LineChart, 
+  Compass, Database, FileCode2, LineChart, 
   Terminal, FolderOpen, Settings, AlertTriangle, CheckCircle, 
   Activity, Server, FolderSync, Plus, ArrowRight, Sun, Moon,
   Folder, ArrowUp, ChevronRight, Home, Search
@@ -421,28 +421,6 @@ export default function App() {
     }
   };
 
-  const handleSidebarRunClick = async () => {
-    if (running) {
-      try {
-        await apiCall('/api/run/stop', 'POST');
-      } catch (err) {
-        console.error(err);
-      }
-    } else {
-      try {
-        setRunning(true);
-        await apiCall('/api/run/start', 'POST', {
-          row_ids: [],
-          hooks: ['preprocessing', 'launching', 'extracting', 'exploring'],
-          dry_run: false,
-          force: false
-        });
-      } catch (err) {
-        console.error(err);
-        setRunning(false);
-      }
-    }
-  };
 
   return (
     <div className="layout-container">
@@ -523,25 +501,14 @@ export default function App() {
             </button>
           </div>
           
-          <div className="p-3 border-top border-secondary bg-dark bg-opacity-25">
-            <div className="mb-2">
-              <button 
-                onClick={handleSidebarRunClick}
-                className={`btn w-100 d-flex align-items-center justify-content-center gap-2 ${running ? 'btn-danger' : 'btn-primary'}`}
-                style={{ height: '38px' }}
-                disabled={!activeProject}
-              >
-                {running ? <Square size={14} fill="#fff" /> : <Play size={14} fill="#fff" />}
-                {running ? 'Stop Loop' : 'Run Parametric'}
-              </button>
-            </div>
-            {running && (
-              <div className="d-flex align-items-center gap-2 text-info small mt-2">
+          {running && (
+            <div className="p-3 border-top border-secondary bg-dark bg-opacity-25">
+              <div className="d-flex align-items-center gap-2 text-info small">
                 <div className="spinner-border spinner-border-sm text-info" role="status" style={{ width: '12px', height: '12px' }}></div>
                 <span className="small">Running Stage: {hookStage || 'Initializing'}</span>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </aside>
 
         {/* CONTENT WIDGETS */}
