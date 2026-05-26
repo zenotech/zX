@@ -758,6 +758,7 @@ export default function App() {
                     placeholder={connectionType === 'Remote' ? "e.g. /home/user/my-zx-exploration" : "e.g. ~/my-zx-exploration"} 
                     value={newProjectPath} 
                     onChange={(e) => setNewProjectPath(e.target.value)}
+                    disabled={connectionType === 'Remote' && connectionStatus !== 'connected'}
                     className="form-control form-control-sm"
                     style={{ flex: 1, minWidth: 0, background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
                   />

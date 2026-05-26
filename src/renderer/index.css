@@ -413,6 +413,18 @@ textarea:focus {
   box-shadow: 0 0 0 2px var(--accent-cyan-glow);
 }
 
+input:disabled,
+select:disabled,
+textarea:disabled,
+[data-theme='light'] input:disabled,
+[data-theme='light'] select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background-color: var(--bg-secondary) !important;
+  border-color: var(--border-color) !important;
+  box-shadow: none !important;
+}
+
 /* Status Indicator */
 .badge-status {
   padding: 2px 8px;
