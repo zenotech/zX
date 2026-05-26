@@ -222,6 +222,7 @@ async function startBackend(): Promise<number> {
       ...process.env,
       PATH: extendedPath,
       ZX_AUTH_TOKEN: authToken,
+      ZX_PROJECTS_DIR: resolveLocalProjectsDir(),
     } as Record<string, string>;
 
     // Clean up any stray backend processes currently occupying port 8000

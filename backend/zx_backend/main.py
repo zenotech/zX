@@ -125,6 +125,13 @@ active_project_path: Optional[str] = None
 recent_projects: List[str] = []
 
 def get_projects_dir() -> Path:
+    # 0. Environment variable override (e.g. set by Electron app)
+    env_path = os.environ.get("ZX_PROJECTS_DIR")
+    if env_path:
+        try_path = Path(env_path)
+        if try_path.exists() and try_path.is_dir():
+            return try_path
+
     # 1. Dev repo root: backend/zx_backend/main.py -> ../../projects
     try_path = Path(__file__).resolve().parent.parent.parent / "projects"
     if try_path.exists() and try_path.is_dir():
