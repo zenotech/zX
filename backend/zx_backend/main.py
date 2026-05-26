@@ -124,13 +124,53 @@ async def health_check():
 active_project_path: Optional[str] = None
 recent_projects: List[str] = []
 
+def get_projects_dir() -> Path:
+    # 1. Dev repo root: backend/zx_backend/main.py -> ../../projects
+    try_path = Path(__file__).resolve().parent.parent.parent / "projects"
+    if try_path.exists() and try_path.is_dir():
+        return try_path
+        
+    # 2. Package subdirectory: backend/zx_backend/projects
+    try_path = Path(__file__).resolve().parent / "projects"
+    if try_path.exists() and try_path.is_dir():
+        return try_path
+        
+    # 3. User home directory cache: ~/.zx/projects
+    try_path = Path.home() / ".zx" / "projects"
+    if try_path.exists() and try_path.is_dir():
+        return try_path
+        
+    # 4. Standard current working directory: ./projects
+    try_path = Path.cwd() / "projects"
+    if try_path.exists() and try_path.is_dir():
+        return try_path
+        
+    return Path.cwd() / "projects"
+
 class ProjectPathPayload(BaseModel):
     project_path: str
+    template_id: Optional[str] = None
+
+@app.get("/api/project/templates")
+async def get_project_templates():
+    projects_dir = get_projects_dir()
+    json_path = projects_dir / "projects.json"
+    if not json_path.exists():
+        logger.warning(f"templates.json / projects.json not found at {json_path}")
+        return []
+    try:
+        import json
+        with open(json_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load templates json: {e}")
+        return []
 
 @app.post("/api/project/open")
 async def open_project(payload: ProjectPathPayload):
     global active_project_path
     path = payload.project_path
+    template_id = payload.template_id
     
     # Standardize path
     path = os.path.abspath(os.path.expanduser(path))
@@ -145,17 +185,28 @@ async def open_project(payload: ProjectPathPayload):
         if path not in recent_projects:
             recent_projects.append(path)
             
-        # Copy templates if they don't exist
-        hooks_dir = os.path.join(path, "hooks")
-        os.makedirs(hooks_dir, exist_ok=True)
-        
-        for name, content in TEMPLATES_MAP.items():
-            hook_file = os.path.join(hooks_dir, name)
-            if not os.path.exists(hook_file):
-                with open(hook_file, "w") as f:
-                    f.write(content)
-                    
+        # Deploy template if template_id is specified
+        if template_id:
+            projects_dir = get_projects_dir()
+            template_src = projects_dir / template_id
+            if template_src.exists() and template_src.is_dir():
+                logger.info(f"Deploying template {template_id} from {template_src} to {path}")
+                shutil.copytree(str(template_src), path, dirs_exist_ok=True)
+            else:
+                logger.warning(f"Template directory not found: {template_src}")
+        else:
+            # Copy default templates if they don't exist
+            hooks_dir = os.path.join(path, "hooks")
+            os.makedirs(hooks_dir, exist_ok=True)
+            
+            for name, content in TEMPLATES_MAP.items():
+                hook_file = os.path.join(hooks_dir, name)
+                if not os.path.exists(hook_file):
+                    with open(hook_file, "w") as f:
+                        f.write(content)
+                        
         # Check and install optional requirements.txt in hooks directory if it exists
+        hooks_dir = os.path.join(path, "hooks")
         hooks_req_file = os.path.join(hooks_dir, "requirements.txt")
         if os.path.exists(hooks_req_file):
             logger.info(f"Found requirements.txt in hooks directory: {hooks_req_file}")
@@ -346,7 +397,16 @@ async def run_start_endpoint(payload: RunStartPayload):
     if runner_state.running:
         raise HTTPException(status_code=400, detail="Parametric loop is already active")
         
+    from zx_backend.database import run_initialization_hook, load_database
+    df = load_database(active_project_path)
     state = {"max_iterations": 5, "current_iteration": 0}
+    try:
+        _, state = run_initialization_hook(active_project_path, df, state)
+    except Exception as e:
+        logger.error(f"Failed to execute initialize hook for start: {e}")
+        
+    if not df.empty and "_zx_iteration" in df.columns:
+        state["current_iteration"] = int(df["_zx_iteration"].max())
     
     # Spawn sequential runner in a background worker thread
     t = threading.Thread(
@@ -566,7 +626,7 @@ async def get_custom_visualizations():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     try:
-        from zx_backend.database import load_hook_module, load_database
+        from zx_backend.database import load_hook_module, load_database, run_initialization_hook
         hook_path = Path(active_project_path) / "hooks" / "plot.py"
         plot_mod = load_hook_module(hook_path, "plot_hook")
         if not plot_mod or not hasattr(plot_mod, "plot"):
@@ -574,6 +634,14 @@ async def get_custom_visualizations():
         
         df = load_database(active_project_path)
         state = {"max_iterations": 5, "current_iteration": 0}
+        try:
+            _, state = run_initialization_hook(active_project_path, df, state)
+        except Exception as e:
+            logger.error(f"Failed to execute initialize hook for plot: {e}")
+            
+        if not df.empty and "_zx_iteration" in df.columns:
+            state["current_iteration"] = int(df["_zx_iteration"].max())
+            
         figures = plot_mod.plot(df, state)
         if not isinstance(figures, dict):
             raise TypeError("Plot hook must return a dict of Plotly figures")

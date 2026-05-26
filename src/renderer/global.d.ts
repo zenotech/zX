@@ -12,6 +12,7 @@ export interface IZxAPI {
   connectSSHRemote: (host: string) => Promise<{ status: string, host: string, port?: number }>;
   startLocalBackend: () => Promise<number>;
   openDirectoryDialog: () => Promise<string | null>;
+  stopBackend: () => Promise<boolean>;
 }
 
 declare global {

@@ -68,6 +68,15 @@
           "!**/.pytest_cache",
           "!**/tests"
         ]
+      },
+      {
+        "from": "projects",
+        "to": "projects",
+        "filter": [
+          "**/*",
+          "!**/*.pyc",
+          "!**/__pycache__"
+        ]
       }
     ],
     "mac": {

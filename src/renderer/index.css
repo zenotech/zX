@@ -522,3 +522,27 @@ textarea:focus {
   cursor: pointer;
   user-select: none;
 }
+
+/* Template Selection Cards Gallery */
+.template-card {
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.template-card:hover {
+  border-color: var(--accent-cyan) !important;
+  background: rgba(212, 137, 14, 0.03) !important;
+  box-shadow: 0 4px 16px rgba(212, 137, 14, 0.08) !important;
+  transform: translateY(-1px);
+}
+
+[data-theme='light'] .template-card:hover {
+  background: rgba(189, 108, 10, 0.03) !important;
+  box-shadow: 0 4px 16px rgba(189, 108, 10, 0.08) !important;
+}

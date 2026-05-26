@@ -9,5 +9,6 @@ contextBridge.exposeInMainWorld('zxAPI', {
   connectSSHRemote: (host: string) => ipcRenderer.invoke('connect-ssh-remote', host),
   startLocalBackend: () => ipcRenderer.invoke('start-local-backend'),
   openDirectoryDialog: () => ipcRenderer.invoke('open-directory-dialog'),
+  stopBackend: () => ipcRenderer.invoke('stop-backend'),
 });
 

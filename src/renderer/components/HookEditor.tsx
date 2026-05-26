@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Editor from '@monaco-editor/react';
 import { Save, AlertCircle, CheckCircle2, RefreshCw, FileCode, Play } from 'lucide-react';
 
@@ -78,6 +78,22 @@ export default function HookEditor({ activeProject, apiCall, theme }: HookEditor
       setSaveStatus('error');
       console.error(err);
     }
+  };
+
+  // Reference to the latest handleSave function to avoid stale closures in Monaco commands
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
+  const handleEditorDidMount = (editor: any, monaco: any) => {
+    // Bind Cmd+S (macOS) / Ctrl+S (Windows/Linux)
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+      handleSaveRef.current();
+    });
+    
+    // Bind Ctrl+S explicitly on macOS (WinCtrl maps to Ctrl on macOS)
+    editor.addCommand(monaco.KeyMod.WinCtrl | monaco.KeyCode.KeyS, () => {
+      handleSaveRef.current();
+    });
   };
 
   return (
@@ -172,6 +188,7 @@ export default function HookEditor({ activeProject, apiCall, theme }: HookEditor
             theme={theme === 'light' ? 'light' : 'vs-dark'}
             value={code}
             onChange={handleEditorChange}
+            onMount={handleEditorDidMount}
             options={{
               fontSize: 14,
               fontFamily: 'JetBrains Mono',

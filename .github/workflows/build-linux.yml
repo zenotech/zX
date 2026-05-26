@@ -1,41 +1,107 @@
-name: Release Linux Build
+name: Build and Release Linux Electron App
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Release version (e.g. 1.0.0)'
+        description: 'Version number to release (e.g. 0.2.0)'
         required: true
-        type: string
+        default: '0.2.0'
 
 permissions:
   contents: write
 
 jobs:
-  release-linux:
-    name: Build & Release Linux Packages
+  build-and-release:
+    name: Build and Release Linux App
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - name: Validate Version Input
+      - name: Determine Version
+        id: get_version
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
-            echo "::error::Invalid version format '$VERSION'. Expected semver (e.g. 1.0.0 or 1.0.0-beta.1)"
-            exit 1
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Strip 'v' prefix from git tag
+            TAG_NAME="${{ github.ref_name }}"
+            VERSION="${TAG_NAME#v}"
           fi
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Determined version: $VERSION"
 
-      - name: Update package.json Version
+      - name: Synchronize Versions across Codebase
         run: |
+          VERSION="${{ env.VERSION }}"
+          echo "Updating all version numbers to $VERSION..."
+
+          # Update root package.json & package-lock.json
           npm version "$VERSION" --no-git-tag-version --allow-same-version
-          echo "package.json version set to $VERSION"
+
+          # Update backend/pyproject.toml
+          python3 -c "
+          import re
+          with open('backend/pyproject.toml', 'r') as f:
+              content = f.read()
+          new_content = re.sub(r'version\s*=\s*\"[^\"]+\"', f'version = \"$VERSION\"', content, count=1)
+          with open('backend/pyproject.toml', 'w') as f:
+              f.write(new_content)
+          "
+
+          # Update backend/zx_backend/__init__.py
+          python3 -c "
+          import re
+          with open('backend/zx_backend/__init__.py', 'r') as f:
+              content = f.read()
+          new_content = re.sub(r'__version__\s*=\s*\"[^\"]+\"', f'__version__ = \"$VERSION\"', content, count=1)
+          with open('backend/zx_backend/__init__.py', 'w') as f:
+              f.write(new_content)
+          "
+
+          # Update src/renderer/App.tsx
+          python3 -c "
+          import re
+          with open('src/renderer/App.tsx', 'r') as f:
+              content = f.read()
+          new_content = re.sub(r'zX Engine v\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?', f'zX Engine v$VERSION', content)
+          with open('src/renderer/App.tsx', 'w') as f:
+              f.write(new_content)
+          "
+
+          # Update src/main.ts
+          python3 -c "
+          import re
+          with open('src/main.ts', 'r') as f:
+              content = f.read()
+          new_content = re.sub(r'zx_backend-\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?-py3-none-any\.whl', f'zx_backend-$VERSION-py3-none-any.whl', content)
+          with open('src/main.ts', 'w') as f:
+              f.write(new_content)
+          "
+
+          echo "=== Codebase modifications diff ==="
+          git diff
+
+      - name: Install System Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1 \
+            libglx-mesa0 \
+            libegl1 \
+            libxrender1 \
+            libxt6 \
+            libxxf86vm1 \
+            libglapi-mesa \
+            build-essential
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.10'
 
@@ -53,10 +119,9 @@ jobs:
           ls -la dist/
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
 
       - name: Install Node Dependencies
         run: npm ci || npm install
@@ -68,30 +133,21 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: zX-linux-packages
-          path: |
-            release/*.AppImage
-            release/*.deb
-          if-no-files-found: error
-          retention-days: 30
+      - name: Create Example Projects Tarball
+        run: |
+          tar -czf zx-example-projects.tar.gz projects
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v3
         with:
-          tag_name: "v${{ env.VERSION }}"
-          name: "zX v${{ env.VERSION }}"
-          body: |
-            ## zX v${{ env.VERSION }}
-
-            ### Linux Distribution
-            - **AppImage** – Portable, run anywhere
-            - **deb** – Debian/Ubuntu installer
+          tag_name: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
           draft: false
           prerelease: ${{ contains(env.VERSION, '-') }}
           files: |
             release/*.AppImage
             release/*.deb
-          generate_release_notes: true
+            zx-example-projects.tar.gz
+            backend/dist/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

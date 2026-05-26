@@ -51,6 +51,10 @@ export default function App() {
   const [newProjectPath, setNewProjectPath] = useState<string>('');
   const [projectError, setProjectError] = useState<string>('');
 
+  // Template deployment states
+  const [templates, setTemplates] = useState<{ id: string; name: string; description: string }[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
+
   // Remote file browser states
   const [showRemoteBrowser, setShowRemoteBrowser] = useState<boolean>(false);
   const [remoteBrowserPath, setRemoteBrowserPath] = useState<string>('');
@@ -198,6 +202,22 @@ export default function App() {
     return () => clearInterval(intervalId);
   }, [authToken, connectionStatus, port, isEstablishingConnection]);
 
+  // Fetch templates when connected
+  useEffect(() => {
+    if (connectionStatus === 'connected' && authToken) {
+      apiCall('/api/project/templates')
+        .then((data) => {
+          setTemplates(data || []);
+        })
+        .catch((err) => {
+          console.error('Failed to load templates', err);
+        });
+    } else {
+      setTemplates([]);
+      setSelectedTemplate(null);
+    }
+  }, [connectionStatus, authToken, port]);
+
   // Cleanup active WebSocket on component unmount
   useEffect(() => {
     return () => {
@@ -263,14 +283,17 @@ export default function App() {
     };
   }, [connectionStatus, authToken, port, running]);
 
-  const handleOpenProject = async (path: string) => {
+  const handleOpenProject = async (path: string, templateId?: string) => {
     if (!path.trim()) {
       setProjectError('Please specify a valid path.');
       return;
     }
     setProjectError('');
     try {
-      const res = await apiCall('/api/project/open', 'POST', { project_path: path });
+      const res = await apiCall('/api/project/open', 'POST', { 
+        project_path: path,
+        template_id: templateId || undefined
+      });
       if (res.status === 'success') {
         setActiveProject(res.project_path);
         setShowProjectModal(false);
@@ -597,7 +620,14 @@ export default function App() {
               <FolderOpen size={12} style={{ color: 'var(--accent-cyan)' }} />
               Active Project: <span style={{ color: 'var(--text-primary)', fontWeight: 500 }}>{activeProject}</span>
               <button 
-                onClick={() => setShowProjectModal(true)} 
+                onClick={async () => {
+                  setActiveProject('');
+                  setConnectionStatus('disconnected');
+                  if (window.zxAPI) {
+                    await window.zxAPI.stopBackend();
+                  }
+                  setShowProjectModal(true);
+                }} 
                 className="btn btn-sm btn-outline-secondary py-0 px-2 ms-2" 
                 style={{ fontSize: '11px', height: '22px' }}
               >
@@ -756,7 +786,7 @@ export default function App() {
                     </button>
                   )}
                   <button 
-                    onClick={() => handleOpenProject(newProjectPath)}
+                    onClick={() => handleOpenProject(newProjectPath, selectedTemplate || undefined)}
                     disabled={connectionStatus !== 'connected'}
                     className="btn btn-sm btn-primary d-flex align-items-center gap-1" 
                     style={{ whiteSpace: 'nowrap' }}
@@ -766,6 +796,73 @@ export default function App() {
 
                 </div>
                 {projectError && <div className="text-danger small mt-1">{projectError}</div>}
+
+                {/* TEMPLATE PROJECT cards gallery */}
+                {connectionStatus === 'connected' && templates.length > 0 && (
+                  <div style={{ marginTop: '20px' }}>
+                    <label className="form-label text-secondary mb-2" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em' }}>
+                      TEMPLATE PROJECT (OPTIONAL)
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '10px', maxHeight: '180px', overflowY: 'auto', paddingRight: '4px' }}>
+                      
+                      {/* Blank / Default Card */}
+                      <div 
+                        onClick={() => setSelectedTemplate(null)}
+                        style={{
+                          border: selectedTemplate === null ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
+                          background: selectedTemplate === null ? 'rgba(0, 180, 216, 0.04)' : 'var(--bg-primary)',
+                          borderRadius: '8px',
+                          padding: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          boxShadow: selectedTemplate === null ? '0 0 10px rgba(0, 180, 216, 0.1)' : 'none'
+                        }}
+                        className="template-card"
+                      >
+                        <span style={{ fontSize: '13px', fontWeight: '600', color: selectedTemplate === null ? 'var(--accent-cyan)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <FolderOpen size={14} style={{ color: selectedTemplate === null ? 'var(--accent-cyan)' : 'var(--text-secondary)' }} /> Blank Project
+                        </span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
+                          Start with a clean slate and default Python hook templates.
+                        </span>
+                      </div>
+
+                      {/* Dynamic Templates Cards */}
+                      {templates.map(tmpl => {
+                        const isSelected = selectedTemplate === tmpl.id;
+                        return (
+                          <div 
+                            key={tmpl.id}
+                            onClick={() => setSelectedTemplate(tmpl.id)}
+                            style={{
+                              border: isSelected ? '1px solid var(--accent-cyan)' : '1px solid var(--border-color)',
+                              background: isSelected ? 'rgba(0, 180, 216, 0.04)' : 'var(--bg-primary)',
+                              borderRadius: '8px',
+                              padding: '12px',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              boxShadow: isSelected ? '0 0 10px rgba(0, 180, 216, 0.1)' : 'none'
+                            }}
+                            className="template-card"
+                          >
+                            <span style={{ fontSize: '13px', fontWeight: '600', color: isSelected ? 'var(--accent-cyan)' : 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {tmpl.id === 'six_hump_camel' ? <Activity size={14} style={{ color: isSelected ? 'var(--accent-cyan)' : 'var(--text-secondary)' }} /> : <Compass size={14} style={{ color: isSelected ? 'var(--accent-cyan)' : 'var(--text-secondary)' }} />} {tmpl.name}
+                            </span>
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: '1.4' }}>
+                              {tmpl.description}
+                            </span>
+                          </div>
+                        );
+                      })}
+
+                    </div>
+                  </div>
+                )}
+
               </div>
 
               {recentProjects.length > 0 && (

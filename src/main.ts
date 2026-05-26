@@ -13,6 +13,7 @@ let tunnelServer: net.Server | null = null;
 let authToken: string = '';
 let isBootstrapping = false;
 let PORT = 8000;
+let remotePortActive: number | null = null;
 
 interface AppSettings {
   recentProjects: any[];
@@ -50,6 +51,50 @@ function saveSettings(settings: AppSettings) {
 
 // Generate Auth Token
 authToken = crypto.randomUUID();
+
+async function stopBackendProcesses(): Promise<void> {
+  console.log('stopBackendProcesses: stopping active backend processes...');
+  if (sshClient) {
+    if (remotePortActive !== null) {
+      try {
+        console.log(`Stopping remote backend process on port ${remotePortActive}...`);
+        const killCmd = `kill $(cat ~/.zx/backend_${remotePortActive}.pid) 2>/dev/null || kill $(lsof -t -i :${remotePortActive}) 2>/dev/null || rm -f ~/.zx/backend_${remotePortActive}.pid || true`;
+        const pkillPromise = execCommand(sshClient, killCmd);
+        const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1500));
+        await Promise.race([pkillPromise, timeoutPromise]);
+        console.log('Remote backend shutdown complete or timed out.');
+      } catch (e) {
+        console.error('Failed to execute remote port/PID kill command:', e);
+      }
+    }
+    try {
+      sshClient.end();
+    } catch (e) {
+      console.error('Error closing ssh client:', e);
+    }
+    sshClient = null;
+    remotePortActive = null;
+  }
+
+  if (backendProcess) {
+    try {
+      console.log('Killing local backend process...');
+      backendProcess.kill();
+    } catch (e) {
+      console.error('Error killing local backend process:', e);
+    }
+    backendProcess = null;
+  }
+
+  if (tunnelServer) {
+    try {
+      tunnelServer.close();
+    } catch (e) {
+      console.error('Error closing local tunnel server:', e);
+    }
+    tunnelServer = null;
+  }
+}
 
 function resolveLocalWheel(): { localWheel: string; wheelFilename: string } {
   const possibleDirs = [
@@ -91,6 +136,22 @@ function resolveLocalWheel(): { localWheel: string; wheelFilename: string } {
     }
   }
   return { localWheel, wheelFilename };
+}
+
+function resolveLocalProjectsDir(): string {
+  const possibleDirs = [
+    path.join(__dirname, '../projects'),
+    path.join(app.getAppPath(), 'projects'),
+    path.join(process.resourcesPath, 'projects'),
+    path.join(process.cwd(), 'projects')
+  ];
+  
+  for (const dir of possibleDirs) {
+    if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
+      return dir;
+    }
+  }
+  return path.join(process.cwd(), 'projects');
 }
 
 function runLocalCommand(cmd: string, env: any): Promise<string> {
@@ -349,16 +410,33 @@ app.on('window-all-closed', () => {
   }
 });
 
+let isQuitting = false;
+app.on('before-quit', async (event) => {
+  if (!isQuitting) {
+    event.preventDefault();
+    isQuitting = true;
+    console.log('App is quitting. Performing cleanup...');
+    await stopBackendProcesses();
+    app.quit();
+  }
+});
+
 app.on('quit', () => {
+  // Synchronous fallback
   if (backendProcess) {
-    backendProcess.kill();
+    try {
+      backendProcess.kill();
+    } catch (e) {}
   }
   if (sshClient) {
-    sshClient.end();
+    try {
+      sshClient.end();
+    } catch (e) {}
   }
   if (tunnelServer) {
-    tunnelServer.close();
-    tunnelServer = null;
+    try {
+      tunnelServer.close();
+    } catch (e) {}
   }
 });
 
@@ -371,16 +449,13 @@ ipcMain.handle('save-settings', (_, settings: AppSettings) => {
   return true;
 });
 ipcMain.handle('start-local-backend', async () => {
-  if (sshClient) {
-    sshClient.end();
-    sshClient = null;
-  }
-  if (tunnelServer) {
-    tunnelServer.close();
-    tunnelServer = null;
-  }
+  await stopBackendProcesses();
   const port = await startBackend();
   return port;
+});
+ipcMain.handle('stop-backend', async () => {
+  await stopBackendProcesses();
+  return true;
 });
 
 ipcMain.handle('open-directory-dialog', async () => {
@@ -593,6 +668,47 @@ function uploadFileSFTP(client: Client, localPath: string, remotePath: string): 
   });
 }
 
+function uploadDirectorySFTP(client: Client, localDir: string, remoteDir: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    client.sftp((err, sftp) => {
+      if (err) return reject(err);
+
+      const uploadRecursive = async (localPath: string, remotePath: string): Promise<void> => {
+        const stat = fs.statSync(localPath);
+        if (stat.isDirectory()) {
+          const items = fs.readdirSync(localPath);
+          await execCommand(client, `mkdir -p "${remotePath}"`);
+          for (const item of items) {
+            await uploadRecursive(path.join(localPath, item), `${remotePath}/${item}`);
+          }
+        } else {
+          await new Promise<void>((res, rej) => {
+            console.log(`SFTP: Uploading ${localPath} to ${remotePath}...`);
+            sftp.fastPut(localPath, remotePath, {}, (uploadErr) => {
+              if (uploadErr) rej(uploadErr);
+              else {
+                console.log(`SFTP: Upload completed successfully.`);
+                res();
+              }
+            });
+          });
+        }
+      };
+
+      console.log(`SFTP session started. Uploading directory recursively...`);
+      uploadRecursive(localDir, remoteDir)
+        .then(() => {
+          sftp.end();
+          resolve();
+        })
+        .catch((uploadErr) => {
+          sftp.end();
+          reject(uploadErr);
+        });
+    });
+  });
+}
+
 function createLocalForwardTunnel(client: Client, localPort: number, remotePort: number): Promise<net.Server> {
   return new Promise((resolve, reject) => {
     const server = net.createServer((socket) => {
@@ -621,18 +737,7 @@ function createLocalForwardTunnel(client: Client, localPort: number, remotePort:
 ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
   console.log(`SSH Remote Connection to host: ${hostName}`);
   
-  if (backendProcess) {
-    backendProcess.kill();
-    backendProcess = null;
-  }
-  if (sshClient) {
-    sshClient.end();
-    sshClient = null;
-  }
-  if (tunnelServer) {
-    tunnelServer.close();
-    tunnelServer = null;
-  }
+  await stopBackendProcesses();
 
   return new Promise((resolve, reject) => {
     sshClient = new Client();
@@ -693,6 +798,13 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
           await uploadFileSFTP(sshClient!, localWheel, remoteWheelPath);
         }
 
+        // Upload projects templates directory recursively
+        const localProjectsDir = resolveLocalProjectsDir();
+        const remoteProjectsDir = '.zx/projects';
+        console.log(`Uploading projects directory from ${localProjectsDir} to remote ${remoteProjectsDir}...`);
+        await uploadDirectorySFTP(sshClient!, localProjectsDir, remoteProjectsDir);
+        console.log('Projects directory uploaded successfully.');
+
         // 6. Install the wheel on the remote system
         console.log('Installing package wheel on remote...');
         const installCmd = `
@@ -704,16 +816,18 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
         console.log('Package wheel installed successfully.');
 
         // 7. Start the backend on the remote system using the discovered remote port
-        console.log('Starting remote FastAPI sidecar backend...');
+        console.log(`Preparing remote port ${remotePort}...`);
         try {
-          await execCommand(sshClient!, 'pkill -f "uvicorn zx_backend.main:app" || true');
-        } catch (pkillErr) {
-          console.log('pkill returned code null or failed, ignoring:', pkillErr);
+          const checkCmd = `kill $(cat ~/.zx/backend_${remotePort}.pid) 2>/dev/null || kill $(lsof -t -i :${remotePort}) 2>/dev/null || rm -f ~/.zx/backend_${remotePort}.pid || true`;
+          await execCommand(sshClient!, checkCmd);
+        } catch (cleanErr) {
+          console.log('Port cleanup ignored:', cleanErr);
         }
 
         const startCmd = `
           export ZX_AUTH_TOKEN="${authToken}"
           nohup ~/.zx/venv/bin/python3 -m uvicorn zx_backend.main:app --host 127.0.0.1 --port ${remotePort} > ~/.zx/backend.log 2>&1 &
+          echo $! > ~/.zx/backend_${remotePort}.pid
           
           # Wait up to 10s for the backend port to bind and become active
           i=0
@@ -735,6 +849,7 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
         tunnelServer = await createLocalForwardTunnel(sshClient!, localPort, remotePort);
         console.log(`Local port forward tunnel server successfully listening.`);
 
+        remotePortActive = remotePort;
         resolve({ status: 'success', host: hostName, port: localPort });
       } catch (bootstrapErr: any) {
         console.error('Bootstrapping failed:', bootstrapErr);
