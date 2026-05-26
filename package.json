@@ -81,10 +81,13 @@
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "icon": "build/icon.png",
+      "icon": "build/icon.icns",
       "notarize": {
         "teamId": "HDDG45ZM4G"
       }
+    },
+    "dmg": {
+      "icon": "build/icon.icns"
     },
     "win": {
       "icon": "build/icon.png"
