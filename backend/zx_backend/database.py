@@ -122,6 +122,8 @@ def save_state(project_path: str, state: Dict[str, Any]) -> None:
         # Prevent runtime helper variables from polluting the persisted state file
         state_to_save = state.copy()
         state_to_save.pop("workspace_dir", None)
+        state_to_save.pop("force", None)
+        state_to_save.pop("dry_run", None)
         with open(state_path, "w", encoding="utf-8") as f:
             json.dump(state_to_save, f, indent=4)
     except Exception as e:

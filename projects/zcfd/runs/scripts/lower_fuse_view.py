@@ -5,7 +5,8 @@ import argparse
 import subprocess
 
 parser = argparse.ArgumentParser(description='Process Paraview state.')
-parser.add_argument('--run_id', type=int, default=3, help='Run ID to process')
+parser.add_argument('--workspace_dir', type=str, help='Workspace directory')
+parser.add_argument('--run_id', type=int, help='Run ID to process')
 parser.add_argument('--num_parallel', type=int, default=1, help='Number of parallel processes to spawn')
 parser.add_argument('--worker_id', type=int, default=-1, help='Internal use: worker ID')
 args, _ = parser.parse_known_args()
@@ -26,6 +27,8 @@ if args.num_parallel > 1 and args.worker_id == -1:
         
     print("All parallel workers completed!")
     sys.exit(0)
+
+workspace_dir = args.workspace_dir
 
 import paraview
 paraview.compatibility.major = 6
@@ -82,7 +85,7 @@ SetActiveView(renderView1)
 
 # a texture
 zCFD_Mark_CMYK_No_Strapline_trans = FindTextureOrCreate(registrationName='ZCFD_Mark_CMYK_No_Strapline_trans', 
-                                                        filename='/n/projects/EMB/EVE/FLYOVER/runs/images/ZCFD_Mark_CMYK.png')
+                                                        filename=f'{workspace_dir}/runs/images/ZCFD_Mark_CMYK.png')
 
 # create a new 'Logo'
 logo1 = Logo(registrationName='Logo1')
@@ -93,11 +96,11 @@ text1 = Text(registrationName='Text1')
 text1.Text = f'Run: {run_id}'
 
 # create a new 'PVD Reader'
-runpvd = PVDReader(registrationName='run.pvd', FileName=f'/n/projects/EMB/EVE/FLYOVER/runs/run_{run_id}/run_P8_OUTPUT/run.pvd')
+runpvd = PVDReader(registrationName='run.pvd', FileName=f'{workspace_dir}/runs/run_{run_id}/run_P8_OUTPUT/run.pvd')
 runpvd.CellArrays = ['V', 'p', 'T', 'rho', 'mach', 'cp', 'eddy', 'lesregion', 'Qcriterion']
 
 # create a new 'PVD Reader'
-run_wallpvd = PVDReader(registrationName='run_wall.pvd', FileName=f'/n/projects/EMB/EVE/FLYOVER/runs/run_{run_id}/run_P8_OUTPUT/run_wall.pvd')
+run_wallpvd = PVDReader(registrationName='run_wall.pvd', FileName=f'{workspace_dir}/runs/run_{run_id}/run_P8_OUTPUT/run_wall.pvd')
 run_wallpvd.CellArrays = ['zone', 'cp', 'cf', 'yplus', 'V']
 
 # create a new 'Clip'
@@ -249,7 +252,7 @@ SetActiveSource(contour1)
 # ================================================================
 
 # Define output directory for images (defaulting to current directory)
-output_directory = f"/n/projects/EMB/EVE/FLYOVER/runs/run_{run_id}/images"
+output_directory = f"{workspace_dir}/runs/run_{run_id}/images"
 
 # Create the directory if it doesn't exist
 if not os.path.exists(output_directory):

@@ -8,6 +8,7 @@
     "omp_num_threads": 18,
     "i_mpi_debug": 100,
     "zcfd_install": "/apps/zenotech/zCFD/zCFD-icx-sse-impi-2025.11.13331-Linux-64bit/bin",
+    "paraview_install": "/apps/ParaView-6.0.0-MPI-Linux-Python3.12-x86_64/bin",
     "nprocs_half": 2,
     "slurm_args_half": "-p batch --gres=gpu:2 -t 80:0 -J EVE",
     "nprocs_full": 8,

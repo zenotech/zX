@@ -109,6 +109,10 @@ def run_loop_in_thread(
 ):
     global runner_state
     
+    # Inject execution-specific options into the state dictionary for hook access
+    state["force"] = force
+    state["dry_run"] = dry_run
+    
     runner_state.running = True
     runner_state.stop_requested = False
     

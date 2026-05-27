@@ -1,5 +1,7 @@
 from pathlib import Path
 import csv
+import os
+import subprocess
 import numpy as np
 import pandas as pd
 
@@ -53,24 +55,27 @@ def move_moment_ref_pt(fx, fy, fz, mx, my, mz, pt, new_pt):
     return mx_new, my_new, mz_new
 
 def generate_lower_view(row: dict, state: dict, run_dir: Path):
+    force = state.get("force", False)
+    run_id = row["row_id"]
+    mp4_file = Path(state["workspace_dir"]) / "runs" / "images" / f"{run_id}.mp4"
 
-    if os.path.isdir(run_dir):# and (not os.path.exists(os.path.join(dir_name, 'top.png') or force)):
+    if os.path.isdir(run_dir) and (not mp4_file.exists() or force):
         print(f"Generating top view for {run_dir}...")
-        command_template = f"(/apps/ParaView-6.0.0-MPI-Linux-Python3.12-x86_64/bin/pvpython --force-offscreen-rendering --opengl-window-backend EGL scripts/lower_fuse_view.py --run_id {run_id} --num_parallel 5)"
+        command_template = f"({state['paraview_install']}/pvpython --force-offscreen-rendering --opengl-window-backend EGL {state['workspace_dir']}/runs/scripts/lower_fuse_view.py --workspace_dir {state['workspace_dir']} --run_id {run_id} --num_parallel 5)"
         try:
             subprocess.run(command_template, shell=True, check=True)
         except subprocess.CalledProcessError as e:
             print(f"Failed to submit job in {run_dir}: {e}")
-        command_template = f"ffmpeg -framerate 5 -i {run_dir}/images/frame_%04d.png -c:v libx264 -pix_fmt yuv420p images/{run_dir}.mp4"
+        command_template = f"ffmpeg -framerate 5 -i {run_dir}/images/frame_%04d.png -c:v libx264 -pix_fmt yuv420p {mp4_file} -y"
         try:
             subprocess.run(command_template, shell=True, check=True)
         except subprocess.CalledProcessError as e:
             print(f"Failed to submit job in {run_dir}: {e}")
     else:
         if not os.path.isdir(run_dir):
-            print(f"Directory {run_dir} does not exist . Skipping.")
+            print(f"Directory {run_dir} does not exist. Skipping.")
         else:
-            print(f"top.png already exists in {run_dir}. Skipping.")
+            print(f"{mp4_file.name} already exists in runs/images/. Skipping.")
 
 def extract(row: dict, state: dict, run_dir: Path) -> dict:
     """
@@ -137,5 +142,7 @@ def extract(row: dict, state: dict, run_dir: Path) -> dict:
         results["C_D"] = drag / factor
 
         results["C_m"] = pitch / (factor*ref_len)
+
+        generate_lower_view(row, state, run_dir)
 
     return results
