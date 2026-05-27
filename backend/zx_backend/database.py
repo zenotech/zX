@@ -103,22 +103,27 @@ def load_hook_module(hook_path: Path, module_name: str) -> Any:
 
 def load_state(project_path: str) -> Dict[str, Any]:
     state_path = os.path.join(project_path, "zx_state.json")
+    state = {"max_iterations": 5, "current_iteration": 0}
     if os.path.exists(state_path):
         try:
             import json
             with open(state_path, "r", encoding="utf-8") as f:
-                return json.load(f)
+                state = json.load(f)
         except Exception as e:
             logger.error(f"Failed to load state json from {state_path}: {e}")
-    # Default fallback
-    return {"max_iterations": 5, "current_iteration": 0}
+    # Dynamically inject the active project workspace directory (absolute path)
+    state["workspace_dir"] = os.path.abspath(project_path)
+    return state
 
 def save_state(project_path: str, state: Dict[str, Any]) -> None:
     state_path = os.path.join(project_path, "zx_state.json")
     try:
         import json
+        # Prevent runtime helper variables from polluting the persisted state file
+        state_to_save = state.copy()
+        state_to_save.pop("workspace_dir", None)
         with open(state_path, "w", encoding="utf-8") as f:
-            json.dump(state, f, indent=4)
+            json.dump(state_to_save, f, indent=4)
     except Exception as e:
         logger.error(f"Failed to save state json to {state_path}: {e}")
 

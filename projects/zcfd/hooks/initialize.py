@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
+import os
 
 def initialize(table: DataFrame, state: dict) -> tuple[list[dict], dict]:
     """
@@ -58,11 +59,12 @@ def initialize(table: DataFrame, state: dict) -> tuple[list[dict], dict]:
     state["use_slurm"] = True
     state["slurm_poll_interval"] = 60
 
-    # Create directories
-    os.makedirs("data", exist_ok=True, parents=True)
-    os.makedirs("runs/scripts", exist_ok=True, parents=True)
-    os.makedirs("runs/template", exist_ok=True, parents=True)
-    os.makedirs("runs/images", exist_ok=True, parents=True)
-    os.makedirs("runs/mesh", exist_ok=True, parents=True)
+    # Create directories inside the workspace directory
+    workspace_dir = state["workspace_dir"]
+    os.makedirs(os.path.join(workspace_dir, "data"), exist_ok=True)
+    os.makedirs(os.path.join(workspace_dir, "runs/scripts"), exist_ok=True)
+    os.makedirs(os.path.join(workspace_dir, "runs/template"), exist_ok=True)
+    os.makedirs(os.path.join(workspace_dir, "runs/images"), exist_ok=True)
+    os.makedirs(os.path.join(workspace_dir, "runs/mesh"), exist_ok=True)
     
     return rows, state

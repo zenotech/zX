@@ -1,0 +1,101 @@
+import eve_flyover_no_pusher_zone as zones
+
+import zutil
+import math
+
+alpha = 0.0
+beta = 0.0
+speed = SPEED
+
+farfield = zones.to_id(["farfield"])
+aircraft = zones.to_id(["aircraft"])
+    
+def my_transform(x, y, z):
+    v = [x, y, z]
+    v = zutil.rotate_vector(v, alpha, beta)
+    return {"v1": v[0], "v2": v[1], "v3": v[2]}
+
+temp = 273.14 + 19.5 
+press = 91516.6
+sound = math.sqrt(1.4 * 287.0 * temp)
+dens = press / (temp * 287.0)
+
+parameters = {
+    "restart": False,
+    "units": "SI",
+    "safe": False,
+    "scale": [0.001,0.001,0.001], # mesh in millimeters
+    "reference": "IC_1",
+    "time marching": {
+        "unsteady": {"total time": 1.0, "time step": 1.0, "order": "second"},
+        "scheme": {
+            "name": "implicit euler",
+            "stage": 1,
+        },
+        "cfl": 50.0,
+        "cfl transport": 30.0,
+        "cfl ramp factor": {"initial": 1.0, "growth": 1.05},
+        "cycles": 1200,
+    },
+    "equations": "RANS",
+    "RANS": {
+        "order": "second",
+        "first order cycles": 200,
+        "limiter": "vanalbada",
+        "inviscid flux scheme": "Roe",
+        "precondition": True,
+        "turbulence": {
+            "model": "sst",
+        },
+    },
+    "linear solver options": {"double precision": True,},
+    "material": "air",
+    "air": {
+        "gamma": 1.4,
+        "gas constant": 287.0,
+        "Sutherlands const": 110.4,
+        "Prandtl No": 0.72,
+        "Turbulent Prandtl No": 0.9,
+    },
+    "IC_1": {
+        "temperature": temp,
+        "pressure": press,
+        "V": {"vector": zutil.vector_from_angle(alpha, beta, speed)},
+        #"Reynolds No": 763644.0, 
+        "Viscosity": 1.51e-5, # sea level
+        "Reference Length": 1.0,  
+        "turbulence intensity": 5.2e-2,
+        "eddy viscosity ratio": 1.0,
+    },
+    "BC_1": {
+        "zone": aircraft,
+        "type": "wall",
+        "kind": "wallfunction",
+    },
+    "BC_2": {
+        "zone": farfield,
+        "type": "farfield",
+        "condition": "IC_1",
+        "kind": "riemann",
+    },
+    "report": {
+        "frequency": 10,
+        "Scale residuals by volume": False,
+        "forces": {
+            "FR_1": {
+                "name": "wall",
+                "zone": aircraft,
+                "transform": my_transform,
+                #"reference area": 1.0,  
+                #"reference point" : centre_of_gravity,
+                #"reference length": 0.157*mm_scale,
+            },
+        }, 
+    },
+    "write output": {
+        "format": "vtk",
+        "frequency": 1000,
+        "surface variables": ["cp","cf","yplus","V"],
+        "volume variables": ["V", "p", "T", "rho", "mach", "cp", "eddy", "lesregion", "Qcriterion"],
+    },
+}
