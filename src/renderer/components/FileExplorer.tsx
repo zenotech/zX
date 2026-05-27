@@ -155,6 +155,8 @@ export default function FileExplorer({ activeProject, apiCall, theme }: FileExpl
                 {isExpanded ? <ChevronDown size={14} style={{ color: 'var(--text-muted)' }} /> : <ChevronRight size={14} style={{ color: 'var(--text-muted)' }} />}
                 <Folder size={15} style={{ color: 'var(--accent-purple)', flexShrink: 0 }} />
               </>
+            ) : node.name.toLowerCase().endsWith('.pdf') ? (
+              <FileText size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
             ) : (
               <File size={15} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
             )}
@@ -270,30 +272,118 @@ export default function FileExplorer({ activeProject, apiCall, theme }: FileExpl
               </button>
             </div>
 
-            {/* Monaco Preview Body */}
-            <div style={{ flexGrow: 1, position: 'relative', background: theme === 'light' ? '#ffffff' : '#1a1614' }}>
+            {/* Monaco Preview Body / Image Preview */}
+            <div style={{ flexGrow: 1, position: 'relative', background: theme === 'light' ? '#ffffff' : '#1a1614', overflow: 'hidden' }}>
               {loadingContent ? (
                 <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', background: theme === 'light' ? 'var(--bg-primary)' : '#0d0e12', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10, gap: '8px', color: 'var(--text-secondary)' }}>
                   <div className="spinner-border spinner-border-sm text-primary" role="status"></div> Loading file content...
                 </div>
               ) : null}
               
-              <Editor
-                height="100%"
-                language={getFileLanguage(selectedFile.name)}
-                theme={theme === 'light' ? 'light' : 'vs-dark'}
-                value={fileContent}
-                options={{
-                  fontSize: 13,
-                  fontFamily: 'JetBrains Mono',
-                  minimap: { enabled: false },
-                  automaticLayout: true,
-                  readOnly: true,
-                  lineNumbers: 'on',
-                  scrollBeyondLastLine: false
-                }}
-              />
+              {selectedFile && ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'].some(ext => selectedFile.name.toLowerCase().endsWith(ext)) ? (
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  justifyContent: 'center', 
+                  alignItems: 'center', 
+                  height: '100%', 
+                  padding: '24px',
+                  background: theme === 'light' ? '#f8f9fa' : '#0a0a0c',
+                  overflow: 'auto'
+                }}>
+                  <div style={{ 
+                    maxWidth: '100%', 
+                    maxHeight: '100%', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '16px',
+                    padding: '20px',
+                    borderRadius: '12px',
+                    background: theme === 'light' ? '#ffffff' : '#121215',
+                    border: theme === 'light' ? '1px solid #e4e4e7' : '1px solid #1f1f23',
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                    transition: 'all 0.3s ease'
+                  }}>
+                    {fileContent && fileContent.startsWith('data:image') ? (
+                      <div style={{
+                        position: 'relative',
+                        padding: '8px',
+                        borderRadius: '6px',
+                        background: theme === 'light' 
+                          ? 'repeating-conic-gradient(#f4f4f5 0% 25%, #e4e4e7 0% 50%) 50% / 20px 20px'
+                          : 'repeating-conic-gradient(#1a1a1f 0% 25%, #0f0f12 0% 50%) 50% / 20px 20px',
+                        border: theme === 'light' ? '1px dashed #d4d4d8' : '1px dashed #2f2f35'
+                      }}>
+                        <img 
+                          src={fileContent} 
+                          alt={selectedFile.name} 
+                          style={{ 
+                            maxWidth: '100%', 
+                            maxHeight: '55vh', 
+                            objectFit: 'contain',
+                            display: 'block',
+                            borderRadius: '4px'
+                          }} 
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-muted small">Loading image...</div>
+                    )}
+                    <div style={{ textAlign: 'center' }}>
+                      <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{selectedFile.name}</p>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                        {selectedFile.size !== undefined ? `Size: ${Math.round(selectedFile.size / 102.4) / 10} KB` : ''}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              ) : selectedFile && selectedFile.name.toLowerCase().endsWith('.pdf') ? (
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  height: '100%', 
+                  background: theme === 'light' ? '#f8f9fa' : '#0a0a0c',
+                  overflow: 'hidden'
+                }}>
+                  {fileContent && fileContent.startsWith('data:application/pdf') ? (
+                    <iframe 
+                      src={fileContent} 
+                      title={selectedFile.name} 
+                      style={{ 
+                        width: '100%', 
+                        height: '100%', 
+                        border: 'none',
+                        background: theme === 'light' ? '#ffffff' : '#121215'
+                      }} 
+                    />
+                  ) : (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'var(--text-secondary)' }}>
+                      <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ marginRight: '8px' }}></div>
+                      Loading PDF...
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Editor
+                  height="100%"
+                  language={getFileLanguage(selectedFile.name)}
+                  theme={theme === 'light' ? 'light' : 'vs-dark'}
+                  value={fileContent}
+                  options={{
+                    fontSize: 13,
+                    fontFamily: 'JetBrains Mono',
+                    minimap: { enabled: false },
+                    automaticLayout: true,
+                    readOnly: true,
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false
+                  }}
+                />
+              )}
             </div>
+
 
           </div>
         ) : (

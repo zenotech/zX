@@ -216,6 +216,60 @@ def _install_requirements(req_file: str) -> None:
             logger.error(f"Failed to install requirements using standard pip: {e.stderr or e.stdout or str(e)}")
 
 
+def robust_copy_tree(src: Path, dst: Path) -> None:
+    """
+    Recursively copies a directory tree from src to dst.
+    - Handles merging with existing directories.
+    - Overwrites existing files, making them writeable first if they exist and are read-only.
+    - If shutil.copy2 (metadata copy) fails due to filesystem permissions/capabilities,
+      falls back to shutil.copy (data only).
+    - Preserves symbolic links as links and ignores dangling symlinks.
+    - Captures and logs exceptions rather than aborting, ensuring as many files as possible are copied.
+    """
+    dst.mkdir(parents=True, exist_ok=True)
+    for entry in os.scandir(src):
+        src_item = Path(entry.path)
+        dst_item = dst / entry.name
+        
+        if entry.is_symlink():
+            try:
+                # Remove existing destination item if it exists
+                if dst_item.exists() or dst_item.is_symlink():
+                    if dst_item.is_dir() and not dst_item.is_symlink():
+                        shutil.rmtree(dst_item)
+                    else:
+                        dst_item.unlink()
+                
+                # Copy symlink
+                link_target = os.readlink(src_item)
+                os.symlink(link_target, dst_item)
+                logger.info(f"Copied symlink {src_item} -> {dst_item}")
+            except Exception as e:
+                logger.warning(f"Failed to copy symlink {src_item} to {dst_item}: {e}")
+        elif entry.is_dir():
+            robust_copy_tree(src_item, dst_item)
+        else:
+            try:
+                # If target file exists and is read-only, try to change permissions to writeable
+                if dst_item.exists():
+                    try:
+                        os.chmod(dst_item, 0o666)
+                    except Exception:
+                        pass
+                
+                # Attempt to copy file with metadata
+                shutil.copy2(str(src_item), str(dst_item))
+            except (OSError, PermissionError) as e:
+                logger.warning(f"shutil.copy2 failed for {src_item} -> {dst_item} due to: {e}. Retrying with basic copy...")
+                try:
+                    # Fallback: copy file data and basic permissions only
+                    shutil.copy(str(src_item), str(dst_item))
+                except Exception as e2:
+                    logger.error(f"Failed to copy file {src_item} to {dst_item}: {e2}")
+            except Exception as e:
+                logger.error(f"Unexpected error copying file {src_item} to {dst_item}: {e}")
+
+
 @app.post("/api/project/open")
 async def open_project(payload: ProjectPathPayload):
     global active_project_path
@@ -241,7 +295,7 @@ async def open_project(payload: ProjectPathPayload):
             template_src = projects_dir / template_id
             if template_src.exists() and template_src.is_dir():
                 logger.info(f"Deploying template {template_id} from {template_src} to {path}")
-                shutil.copytree(str(template_src), path, dirs_exist_ok=True)
+                robust_copy_tree(template_src, Path(path))
             else:
                 logger.warning(f"Template directory not found: {template_src}")
         else:
@@ -655,12 +709,45 @@ async def read_explorer_file(path: str):
     abs_path = os.path.join(active_project_path, path)
     if not os.path.exists(abs_path) or os.path.isdir(abs_path):
         raise HTTPException(status_code=404, detail="File not found")
+    
+    # Check if the file is an image (PNG, JPG, JPEG, GIF, WEBP, SVG)
+    ext = os.path.splitext(abs_path)[1].lower()
+    if ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"):
+        try:
+            import base64
+            mime_types = {
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+                ".svg": "image/svg+xml"
+            }
+            mime = mime_types.get(ext, "image/png")
+            with open(abs_path, "rb") as f:
+                img_data = f.read()
+            base64_str = base64.b64encode(img_data).decode("utf-8")
+            return {"content": f"data:{mime};base64,{base64_str}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read image file: {str(e)}")
+
+    if ext == ".pdf":
+        try:
+            import base64
+            with open(abs_path, "rb") as f:
+                pdf_data = f.read()
+            base64_str = base64.b64encode(pdf_data).decode("utf-8")
+            return {"content": f"data:application/pdf;base64,{base64_str}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read PDF file: {str(e)}")
+
     try:
         with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()
         return {"content": content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 class RenamePayload(BaseModel):
     old_path: str
