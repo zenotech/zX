@@ -359,6 +359,10 @@ def run_loop_in_thread(
                 appended_df = pd.concat([df, pd.DataFrame(new_df_rows)], ignore_index=True)
                 save_database(project_path, appended_df)
                 
+                # Save the updated runtime state (containing updated current_iteration, etc.)
+                from zx_backend.database import save_state
+                save_state(project_path, state)
+                
                 # Set next batch of row IDs to execute
                 current_row_ids = [r["_zx_row_id"] for r in new_df_rows]
             else:

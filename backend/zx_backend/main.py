@@ -16,7 +16,8 @@ from datetime import datetime
 
 from zx_backend.templates import TEMPLATES_MAP
 from zx_backend.database import (
-    load_database, save_database, initialize_project_database, get_csv_path
+    load_database, save_database, initialize_project_database, get_csv_path,
+    load_state, save_state, run_state_hook
 )
 from zx_backend.runner import run_loop_in_thread, runner_state
 
@@ -322,6 +323,31 @@ async def open_project(payload: ProjectPathPayload):
 async def get_recent_projects():
     return {"recent_projects": recent_projects}
 
+class StateUpdatePayload(BaseModel):
+    updates: Dict[str, Any]
+
+@app.get("/api/state")
+async def get_state_endpoint():
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    try:
+        state = load_state(active_project_path)
+        return state
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/state/update")
+async def update_state_endpoint(payload: StateUpdatePayload):
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    try:
+        current_state = load_state(active_project_path)
+        updated_state = run_state_hook(active_project_path, current_state, payload.updates)
+        save_state(active_project_path, updated_state)
+        return {"status": "success", "state": updated_state}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Database REST APIs
 @app.get("/api/database")
 async def get_database_endpoint():
@@ -456,14 +482,9 @@ async def run_start_endpoint(payload: RunStartPayload):
     if runner_state.running:
         raise HTTPException(status_code=400, detail="Parametric loop is already active")
         
-    from zx_backend.database import run_initialization_hook, load_database
+    from zx_backend.database import load_state, load_database
     df = load_database(active_project_path)
-    state = {"max_iterations": 5, "current_iteration": 0}
-    try:
-        _, state = run_initialization_hook(active_project_path, df, state)
-    except Exception as e:
-        logger.error(f"Failed to execute initialize hook for start: {e}")
-        
+    state = load_state(active_project_path)
     if not df.empty and "_zx_iteration" in df.columns:
         state["current_iteration"] = int(df["_zx_iteration"].max())
     
@@ -685,19 +706,14 @@ async def get_custom_visualizations():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     try:
-        from zx_backend.database import load_hook_module, load_database, run_initialization_hook
+        from zx_backend.database import load_hook_module, load_database, load_state
         hook_path = Path(active_project_path) / "hooks" / "plot.py"
         plot_mod = load_hook_module(hook_path, "plot_hook")
         if not plot_mod or not hasattr(plot_mod, "plot"):
             return {}
         
         df = load_database(active_project_path)
-        state = {"max_iterations": 5, "current_iteration": 0}
-        try:
-            _, state = run_initialization_hook(active_project_path, df, state)
-        except Exception as e:
-            logger.error(f"Failed to execute initialize hook for plot: {e}")
-            
+        state = load_state(active_project_path)
         if not df.empty and "_zx_iteration" in df.columns:
             state["current_iteration"] = int(df["_zx_iteration"].max())
             

@@ -224,6 +224,37 @@ def plot(table: DataFrame, state: dict) -> dict:
     }
 """
 
+STATE_TEMPLATE = """def state(state: dict, updates: dict) -> dict:
+    \"\"\"
+    State Hook (Optional)
+    ---------------------
+    Customizes, validates, and applies updates to the shared global state.
+    
+    Parameters:
+      - state: dictionary containing the current shared global state.
+      - updates: dictionary containing the requested state updates.
+      
+    Returns:
+      - state: the updated state dictionary.
+    \"\"\"
+    # Example: custom validation or side-effects
+    for key, val in updates.items():
+        if key == "max_iterations":
+            try:
+                state[key] = max(0, int(val))
+            except (ValueError, TypeError):
+                pass
+        elif key == "slurm_poll_interval":
+            try:
+                state[key] = max(5, int(val))
+            except (ValueError, TypeError):
+                pass
+        else:
+            state[key] = val
+            
+    return state
+"""
+
 TEMPLATES_MAP = {
     "initialize.py": INITIALIZE_TEMPLATE,
     "preprocess.py": PREPROCESS_TEMPLATE,
@@ -231,4 +262,6 @@ TEMPLATES_MAP = {
     "extract.py": EXTRACT_TEMPLATE,
     "explore.py": EXPLORE_TEMPLATE,
     "plot.py": PLOT_TEMPLATE,
+    "state.py": STATE_TEMPLATE,
 }
+

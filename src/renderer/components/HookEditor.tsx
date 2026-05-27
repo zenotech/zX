@@ -10,6 +10,7 @@ interface HookEditorProps {
 
 const HOOK_FILES = [
   { name: 'initialize.py', label: 'Initialization Hook', desc: 'Sets up initial grid parameters & shared state procedurally.' },
+  { name: 'state.py', label: 'State Hook', desc: 'Customizes and validates updates to the shared global state dictionary.' },
   { name: 'preprocess.py', label: 'Pre-processing Hook', desc: 'Converts row inputs into configuration files inside run_dir.' },
   { name: 'launch.py', label: 'Launch Hook', desc: 'Executes the synchronous sequential CLI processes.' },
   { name: 'extract.py', label: 'Extraction Hook', desc: 'Parses CLI outputs in run_dir and returns dict of results.' },

@@ -11,6 +11,7 @@ import HookEditor from './components/HookEditor';
 import VisualizationDashboard from './components/VisualizationDashboard';
 import TerminalPanel from './components/TerminalPanel';
 import FileExplorer from './components/FileExplorer';
+import SharedStatePanel from './components/SharedStatePanel';
 
 interface RecentProject {
   path: string;
@@ -42,7 +43,7 @@ export default function App() {
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [isEstablishingConnection, setIsEstablishingConnection] = useState<boolean>(true);
   
-  const [activeView, setActiveView] = useState<'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer'>('grid');
+  const [activeView, setActiveView] = useState<'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state'>('grid');
   const [running, setRunning] = useState<boolean>(false);
   const [hookStage, setHookStage] = useState<string>('');
   
@@ -489,6 +490,13 @@ export default function App() {
               Python Hooks
             </button>
             <button 
+              onClick={() => setActiveView('state')}
+              className={`btn w-100 justify-content-start text-start d-flex align-items-center gap-2 mb-1 border-0 ${activeView === 'state' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
+            >
+              <Settings size={16} />
+              Shared State
+            </button>
+            <button 
               onClick={() => setActiveView('dashboard')}
               className={`btn w-100 justify-content-start text-start d-flex align-items-center gap-2 mb-1 border-0 ${activeView === 'dashboard' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
             >
@@ -571,6 +579,14 @@ export default function App() {
                 activeProject={activeProject}
                 apiCall={apiCall}
                 theme={theme}
+              />
+            </div>
+          )}
+          {activeView === 'state' && (
+            <div style={{ padding: '0', flexGrow: 1, height: '100%', overflow: 'hidden' }}>
+              <SharedStatePanel 
+                activeProject={activeProject}
+                apiCall={apiCall}
               />
             </div>
           )}

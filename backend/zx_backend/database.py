@@ -101,6 +101,46 @@ def load_hook_module(hook_path: Path, module_name: str) -> Any:
     spec.loader.exec_module(module)
     return module
 
+def load_state(project_path: str) -> Dict[str, Any]:
+    state_path = os.path.join(project_path, "zx_state.json")
+    if os.path.exists(state_path):
+        try:
+            import json
+            with open(state_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.error(f"Failed to load state json from {state_path}: {e}")
+    # Default fallback
+    return {"max_iterations": 5, "current_iteration": 0}
+
+def save_state(project_path: str, state: Dict[str, Any]) -> None:
+    state_path = os.path.join(project_path, "zx_state.json")
+    try:
+        import json
+        with open(state_path, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=4)
+    except Exception as e:
+        logger.error(f"Failed to save state json to {state_path}: {e}")
+
+def run_state_hook(project_path: str, state: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    hook_path = Path(project_path) / "hooks" / "state.py"
+    module = load_hook_module(hook_path, "state_hook")
+    
+    func = None
+    if module:
+        if hasattr(module, "state"):
+            func = getattr(module, "state")
+        elif hasattr(module, "update"):
+            func = getattr(module, "update")
+            
+    if func:
+        logger.info("Executing state hook...")
+        return func(state, updates)
+    else:
+        logger.info("No state hook found, applying updates directly.")
+        state.update(updates)
+        return state
+
 def run_initialization_hook(project_path: str, df: pd.DataFrame, state: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     hook_path = Path(project_path) / "hooks" / "initialize.py"
     module = load_hook_module(hook_path, "initialize_hook")
@@ -128,14 +168,22 @@ def initialize_project_database(project_path: str, initial_csv_path: Optional[st
         if os.path.exists(csv_path):
             df = load_database(project_path)
             
-    state = {"max_iterations": 5, "current_iteration": 0}
+    # Load existing state if any, otherwise default
+    state = load_state(project_path)
     
-    # 2. Run initialization hook if requested
-    if run_init or df.empty:
-        rows, updated_state = run_initialization_hook(project_path, df, state)
-        df = pd.DataFrame(rows)
-        # Store state variables in some project state file or memory if needed
-        # We will pass this state to subsequent execution runs.
+    # 2. Run initialization hook
+    # The user requires that the state currently configured in the initialize hook be set each time a workspace is opened.
+    # Therefore, we always run it to extract/set the state parameters, even if database is not empty, unless it fails.
+    try:
+        rows_init, updated_state = run_initialization_hook(project_path, df, state)
+        state = updated_state
+        if run_init or df.empty:
+            df = pd.DataFrame(rows_init)
+    except Exception as e:
+        logger.error(f"Failed to execute initialize hook on open: {e}")
+        
+    save_state(project_path, state)
+
         
     # 3. Add reserved columns if not present
     for col, dtype in RESERVED_COLUMNS.items():
