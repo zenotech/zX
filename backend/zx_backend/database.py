@@ -46,8 +46,10 @@ RESERVED_COLUMNS = {
     "_zx_started_at": "string",
     "_zx_completed_at": "string",
     "_zx_error": "string",
-    "_zx_iteration": "int"
+    "_zx_iteration": "int",
+    "_zx_job_id": "string"
 }
+
 
 def get_csv_path(project_path: str) -> str:
     return os.path.join(project_path, "zx_database.csv")

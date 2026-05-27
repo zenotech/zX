@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 import threading
+from datetime import datetime
 
 from zx_backend.templates import TEMPLATES_MAP
 from zx_backend.database import (
@@ -173,6 +174,47 @@ async def get_project_templates():
         logger.error(f"Failed to load templates json: {e}")
         return []
 
+def _install_requirements(req_file: str) -> None:
+    if not os.path.exists(req_file):
+        return
+
+    logger.info(f"Installing requirements from {req_file}...")
+    installed_successfully = False
+
+    # Try finding uv on PATH
+    uv_path = shutil.which("uv")
+    # Fallback to common ~/.local/bin/uv location (crucial for remote SSH hosts)
+    if not uv_path:
+        home_uv = os.path.expanduser("~/.local/bin/uv")
+        if os.path.exists(home_uv):
+            uv_path = home_uv
+
+    if uv_path:
+        try:
+            logger.info(f"Attempting to install requirements using uv at {uv_path}...")
+            cmd = [uv_path, "pip", "install", "-r", req_file, "--python", sys.executable]
+            import subprocess
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            logger.info(f"Successfully installed requirements from {req_file} using uv.")
+            if result.stdout:
+                logger.info(result.stdout)
+            installed_successfully = True
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to install requirements using uv: {e.stderr or e.stdout or str(e)}. Falling back to standard pip...")
+    
+    if not installed_successfully:
+        try:
+            logger.info(f"Installing requirements using standard pip...")
+            cmd = [sys.executable, "-m", "pip", "install", "-r", req_file]
+            import subprocess
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            logger.info(f"Successfully installed requirements from {req_file} using pip.")
+            if result.stdout:
+                logger.info(result.stdout)
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to install requirements using standard pip: {e.stderr or e.stdout or str(e)}")
+
+
 @app.post("/api/project/open")
 async def open_project(payload: ProjectPathPayload):
     global active_project_path
@@ -212,40 +254,49 @@ async def open_project(payload: ProjectPathPayload):
                     with open(hook_file, "w") as f:
                         f.write(content)
                         
-        # Check and install optional requirements.txt in hooks directory if it exists
+        # Install packages in requirements.txt (from both the root and hooks directory)
+        root_req_file = os.path.join(path, "requirements.txt")
         hooks_dir = os.path.join(path, "hooks")
         hooks_req_file = os.path.join(hooks_dir, "requirements.txt")
+        
+        if os.path.exists(root_req_file):
+            _install_requirements(root_req_file)
         if os.path.exists(hooks_req_file):
-            logger.info(f"Found requirements.txt in hooks directory: {hooks_req_file}")
-            installed_successfully = False
-            uv_path = shutil.which("uv")
-            if uv_path:
-                try:
-                    logger.info("Attempting to install requirements using uv...")
-                    cmd = [uv_path, "pip", "install", "-r", hooks_req_file, "--python", sys.executable]
-                    import subprocess
-                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                    logger.info("Successfully installed requirements using uv.")
-                    logger.info(result.stdout)
-                    installed_successfully = True
-                except subprocess.CalledProcessError as e:
-                    logger.warning(f"Failed to install requirements using uv: {e.stderr or e.stdout or str(e)}. Falling back to standard pip...")
-            
-            if not installed_successfully:
-                try:
-                    logger.info("Installing requirements using standard pip...")
-                    cmd = [sys.executable, "-m", "pip", "install", "-r", hooks_req_file]
-                    import subprocess
-                    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-                    logger.info("Successfully installed requirements using pip.")
-                    logger.info(result.stdout)
-                except subprocess.CalledProcessError as e:
-                    logger.error(f"Failed to install requirements using standard pip: {e.stderr or e.stdout or str(e)}")
+            _install_requirements(hooks_req_file)
                     
+        # Check for any running Slurm jobs
+        completed_slurm_jobs = []
         try:
             initialize_project_database(path)
+            from zx_backend.runner import check_slurm_job_status, sanitize_job_id
+            df = load_database(path)
+            if not df.empty and "_zx_job_id" in df.columns:
+                running_rows = df[(df["_zx_status"] == "running") & (df["_zx_job_id"] != "")]
+                completed_jobs = []
+                failed_jobs = []
+                for _, r in running_rows.iterrows():
+                    row_id = int(r["_zx_row_id"])
+                    job_id = sanitize_job_id(r["_zx_job_id"])
+                    if job_id:
+                        status_val = check_slurm_job_status(job_id)
+                        if status_val == "completed":
+                            completed_jobs.append({"row_id": row_id, "job_id": job_id})
+                        elif status_val == "failed":
+                            failed_jobs.append({"row_id": row_id, "job_id": job_id})
+                
+                # For failed jobs, mark them as failed in the database
+                for job in failed_jobs:
+                    idx = df[df["_zx_row_id"] == job["row_id"]].index
+                    if not idx.empty:
+                        df.loc[idx, "_zx_status"] = "failed"
+                        df.loc[idx, "_zx_error"] = f"Slurm Job {job['job_id']} failed on the scheduler."
+                        df.loc[idx, "_zx_completed_at"] = datetime.now().isoformat()
+                if failed_jobs:
+                    save_database(path, df)
+                
+                completed_slurm_jobs = completed_jobs
         except Exception as e:
-            logger.error(f"Failed database initialization on open: {e}")
+            logger.error(f"Failed database initialization or Slurm check on open: {e}")
             
     except OSError as e:
         logger.error(f"Filesystem error opening project at {path}: {e}")
@@ -263,7 +314,8 @@ async def open_project(payload: ProjectPathPayload):
     return {
         "status": "success", 
         "project_path": active_project_path,
-        "recent_projects": recent_projects
+        "recent_projects": recent_projects,
+        "completed_slurm_jobs": completed_slurm_jobs
     }
 
 @app.get("/api/project/recent")

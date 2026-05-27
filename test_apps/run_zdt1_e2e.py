@@ -48,18 +48,49 @@ def preprocess(row: dict, state: dict, run_dir: Path) -> None:
 zdt1_launch = """import subprocess
 from pathlib import Path
 import sys
+import re
 
-def launch(row: dict, state: dict, run_dir: Path) -> subprocess.CompletedProcess:
+def launch(row: dict, state: dict, run_dir: Path) -> dict:
     script_path = "/Users/jamil.appa/Documents/zX/test_apps/zdt1.py"
-    cmd = [sys.executable, script_path]
-    result = subprocess.run(
-        cmd,
-        cwd=run_dir,
-        capture_output=True,
-        text=True,
-        check=True
-    )
-    return result
+    
+    use_slurm = state.get("use_slurm", False) or row.get("use_slurm", False)
+    
+    if use_slurm:
+        cmd = ["sbatch", "--job-name=zdt1", "--wrap", f"{sys.executable} {script_path}"]
+        result = subprocess.run(
+            cmd,
+            cwd=run_dir,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        job_id = ""
+        match = re.search(r"Submitted batch job (\\\\d+)", result.stdout)
+        if match:
+            job_id = match.group(1)
+            
+        return {
+            "status": "submitted",
+            "job_id": job_id,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode
+        }
+    else:
+        cmd = [sys.executable, script_path]
+        result = subprocess.run(
+            cmd,
+            cwd=run_dir,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return {
+            "status": "completed",
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode
+        }
 """
 
 zdt1_extract = """from pathlib import Path

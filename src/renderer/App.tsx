@@ -51,6 +51,10 @@ export default function App() {
   const [newProjectPath, setNewProjectPath] = useState<string>('');
   const [projectError, setProjectError] = useState<string>('');
 
+  // Completed Slurm jobs states
+  const [completedSlurmJobs, setCompletedSlurmJobs] = useState<{row_id: number, job_id: string}[]>([]);
+  const [showSlurmPrompt, setShowSlurmPrompt] = useState<boolean>(false);
+
   // Template deployment states
   const [templates, setTemplates] = useState<{ id: string; name: string; description: string }[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
@@ -297,6 +301,12 @@ export default function App() {
       if (res.status === 'success') {
         setActiveProject(res.project_path);
         setShowProjectModal(false);
+        
+        // Prompt for completed Slurm jobs if any
+        if (res.completed_slurm_jobs && res.completed_slurm_jobs.length > 0) {
+          setCompletedSlurmJobs(res.completed_slurm_jobs);
+          setShowSlurmPrompt(true);
+        }
         
         // Save to Electron settings
         const currentServer = connectionType === 'Remote' ? selectedHost : 'Local';
@@ -1040,6 +1050,58 @@ export default function App() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* COMPLETED SLURM JOBS PROMPT MODAL */}
+      {showSlurmPrompt && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(5, 6, 8, 0.85)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1001, backdropFilter: 'blur(8px)' }}>
+          <div className="glass-panel animate-slide-up" style={{ width: '480px', padding: '32px', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '12px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <CheckCircle style={{ color: 'var(--status-completed)' }} /> Completed Slurm Jobs Detected
+            </h3>
+            <p style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: '20px', lineHeight: '1.5' }}>
+              We detected that {completedSlurmJobs.length} Slurm jobs finished executing on the scheduler while the application was closed:
+            </p>
+            <div style={{ maxHeight: '120px', overflowY: 'auto', background: 'var(--bg-primary)', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '24px' }}>
+              {completedSlurmJobs.map(job => (
+                <div key={job.job_id} style={{ fontSize: '12px', color: 'var(--text-primary)', padding: '6px 0', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Row ID: <strong>{job.row_id}</strong></span>
+                  <span style={{ color: 'var(--accent-cyan)', fontWeight: '500' }}>Job ID: {job.job_id}</span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => {
+                  setShowSlurmPrompt(false);
+                  setCompletedSlurmJobs([]);
+                }}
+                className="btn btn-outline-secondary btn-sm"
+              >
+                Dismiss
+              </button>
+              <button 
+                onClick={async () => {
+                  setShowSlurmPrompt(false);
+                  try {
+                    // Trigger execution of remaining hooks (Extraction & Exploration)
+                    await apiCall('/api/run/start', 'POST', {
+                      row_ids: completedSlurmJobs.map(job => job.row_id),
+                      hooks: ['extracting', 'exploring']
+                    });
+                    setRunning(true);
+                    setCompletedSlurmJobs([]);
+                  } catch (err: any) {
+                    alert(`Failed to start remaining hooks: ${err.message}`);
+                  }
+                }}
+                className="btn btn-primary btn-sm"
+              >
+                Run Remaining Hooks
+              </button>
+            </div>
           </div>
         </div>
       )}

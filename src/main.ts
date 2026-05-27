@@ -827,6 +827,7 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
 
         const startCmd = `
           export ZX_AUTH_TOKEN="${authToken}"
+          export PATH="$HOME/.local/bin:$PATH"
           nohup ~/.zx/venv/bin/python3 -m uvicorn zx_backend.main:app --host 127.0.0.1 --port ${remotePort} > ~/.zx/backend.log 2>&1 &
           echo $! > ~/.zx/backend_${remotePort}.pid
           

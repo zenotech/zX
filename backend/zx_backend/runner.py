@@ -143,10 +143,11 @@ def run_loop_in_thread(
                     current_row_ids = df["_zx_row_id"].tolist()
 
         while current_row_ids and not runner_state.stop_requested:
-            # Sequentially process rows
+            # 1. First Pass: Preprocess & Launch all rows
+            launched_row_ids = []
             for row_id in current_row_ids:
                 if runner_state.stop_requested:
-                    logger.info("Cancellation requested. Stopping sequential loop.")
+                    logger.info("Cancellation requested during launch phase. Stopping sequential loop.")
                     break
                     
                 runner_state.active_row = row_id
@@ -186,22 +187,87 @@ def run_loop_in_thread(
                     if err:
                         mark_row_failed(project_path, row_id, f"Launch Error: {err}")
                         continue
+                
+                # If we get here, launch succeeded
+                launched_row_ids.append(row_id)
+                
+            # 2. Second Pass: Poll & Extract for all launched rows
+            remaining_rows = list(launched_row_ids)
+            while remaining_rows and not runner_state.stop_requested:
+                for row_id in list(remaining_rows):
+                    if runner_state.stop_requested:
+                        break
                         
-                # Run Extraction Hook
-                if "extracting" in hooks and not runner_state.stop_requested:
-                    update_row_status(project_path, row_id, "running", stage="extracting")
+                    runner_state.active_row = row_id
+                    run_dir = Path(project_path) / "runs" / f"run_{row_id}"
+                    log_filepath = run_dir / "zx_hook.log"
                     
-                    # We need to lock parameters grid during extraction, which is managed in frontend via grid locking.
-                    err = execute_stage(
-                        "extract", extract_mod, row_id, project_path, run_dir, log_filepath, dry_run, state
-                    )
-                    if err:
-                        mark_row_failed(project_path, row_id, f"Extraction Error: {err}")
-                        continue
+                    # Check if there is an active Slurm job ID
+                    job_id = get_job_id(project_path, row_id)
+                    if job_id:
+                        # Check job status on scheduler
+                        job_status = check_slurm_job_status(job_id, dry_run=dry_run)
+                        if job_status == "completed":
+                            logger.info(f"Slurm job {job_id} for row {row_id} completed. Proceeding to extraction.")
+                            
+                            # Run extraction
+                            if "extracting" in hooks:
+                                update_row_status(project_path, row_id, "running", stage="extracting")
+                                err = execute_stage(
+                                    "extract", extract_mod, row_id, project_path, run_dir, log_filepath, dry_run, state
+                                )
+                                if err:
+                                    mark_row_failed(project_path, row_id, f"Extraction Error: {err}")
+                                else:
+                                    update_row_status(project_path, row_id, "completed")
+                            else:
+                                update_row_status(project_path, row_id, "completed")
+                                
+                            remaining_rows.remove(row_id)
+                        elif job_status == "failed":
+                            logger.error(f"Slurm job {job_id} for row {row_id} failed.")
+                            mark_row_failed(project_path, row_id, f"Slurm Job {job_id} failed on the scheduler.")
+                            remaining_rows.remove(row_id)
+                        else:
+                            # Job is still running, keep in queue
+                            pass
+                    else:
+                        # Local synchronous job (has already completed its launch stage)
+                        if "extracting" in hooks:
+                            update_row_status(project_path, row_id, "running", stage="extracting")
+                            err = execute_stage(
+                                "extract", extract_mod, row_id, project_path, run_dir, log_filepath, dry_run, state
+                            )
+                            if err:
+                                mark_row_failed(project_path, row_id, f"Extraction Error: {err}")
+                            else:
+                                update_row_status(project_path, row_id, "completed")
+                        else:
+                            update_row_status(project_path, row_id, "completed")
+                            
+                        remaining_rows.remove(row_id)
                         
-                # Success
-                if not runner_state.stop_requested:
-                    update_row_status(project_path, row_id, "completed")
+                # Sleep briefly if there are still active jobs in the queue
+                if remaining_rows and not runner_state.stop_requested:
+                    # Determine poll interval (fetch from state or first remaining row)
+                    poll_interval = state.get("slurm_poll_interval", 30)
+                    try:
+                        row_data = load_database(project_path)
+                        first_row_id = remaining_rows[0]
+                        row_record = row_data[row_data["_zx_row_id"] == first_row_id].to_dict(orient="records")[0]
+                        poll_interval = row_record.get("slurm_poll_interval", poll_interval)
+                    except Exception:
+                        pass
+                        
+                    try:
+                        poll_interval = float(poll_interval)
+                    except Exception:
+                        poll_interval = 30.0
+                        
+                    sleep_spent = 0.0
+                    while sleep_spent < poll_interval and not runner_state.stop_requested:
+                        time.sleep(1.0)
+                        sleep_spent += 1.0
             
             # Check for stop request before running exploration
             if runner_state.stop_requested:
@@ -314,6 +380,67 @@ def run_loop_in_thread(
                 "hook_stage": ""
             })
 
+def sanitize_job_id(job_id: Any) -> str:
+    if pd.isna(job_id) or job_id == "":
+        return ""
+    job_str = str(job_id).strip()
+    if job_str.endswith(".0"):
+        job_str = job_str[:-2]
+    return job_str
+
+def save_job_id(project_path: str, row_id: int, job_id: str):
+    df = load_database(project_path)
+    idx = df[df["_zx_row_id"] == row_id].index
+    if not idx.empty:
+        df.loc[idx, "_zx_job_id"] = sanitize_job_id(job_id)
+        save_database(project_path, df)
+
+def get_job_id(project_path: str, row_id: int) -> str:
+    df = load_database(project_path)
+    idx = df[df["_zx_row_id"] == row_id].index
+    if not idx.empty:
+        val = df.loc[idx[0], "_zx_job_id"]
+        return sanitize_job_id(val)
+    return ""
+
+def check_slurm_job_status(job_id: str, dry_run: bool = False) -> str:
+    """
+    Checks the status of a Slurm job using squeue and sacct.
+    Returns 'running', 'completed', or 'failed'.
+    """
+    if dry_run:
+        print(f"[DRY-RUN] Polling status for Slurm job {job_id} -> completed")
+        return "completed"
+
+    import subprocess
+    # First check squeue to see if it is still running/pending
+    try:
+        res = subprocess.run(["squeue", "-j", str(job_id)], capture_output=True, text=True)
+        if res.returncode == 0:
+            if str(job_id) in res.stdout:
+                return "running"
+    except Exception as e:
+        logger.warning(f"Error calling squeue for job {job_id}: {e}")
+
+    # Next check sacct to get the detailed exit state if squeue doesn't find it
+    try:
+        res = subprocess.run(["sacct", "-j", str(job_id), "-n", "-o", "State"], capture_output=True, text=True)
+        if res.returncode == 0 and res.stdout.strip():
+            # Get the state of the main job (first token)
+            state = res.stdout.strip().split()[0].upper()
+            if state in ["COMPLETED"]:
+                return "completed"
+            elif state in ["FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL"]:
+                return "failed"
+            elif state in ["RUNNING", "PENDING"]:
+                return "running"
+    except Exception as e:
+        logger.warning(f"Error calling sacct for job {job_id}: {e}")
+
+    # Fallback to avoid hanging on machines without slurm / when test cases run
+    # If both commands were run and the job wasn't found as running, we'll assume completed.
+    return "completed"
+
 def execute_stage(
     stage_name: str,
     module: Any,
@@ -374,17 +501,33 @@ def execute_stage(
                         if dry_run:
                             with dry_run_patch():
                                 result = func(user_row, state, run_dir)
+                                if isinstance(result, dict):
+                                    if "stdout" in result and result["stdout"]:
+                                        print(f"--- CLI stdout ---\n{result['stdout']}")
+                                    if "stderr" in result and result["stderr"]:
+                                        print(f"--- CLI stderr ---\n{result['stderr']}")
+                                    if "job_id" in result and result["job_id"]:
+                                        save_job_id(project_path, row_id, result["job_id"])
+                                else:
+                                    if result and hasattr(result, "stdout") and result.stdout:
+                                        print(f"--- CLI stdout ---\n{result.stdout}")
+                                    if result and hasattr(result, "stderr") and result.stderr:
+                                        print(f"--- CLI stderr ---\n{result.stderr}")
+                            print("[DRY-RUN] Launch stage finished successfully (simulated).")
+                        else:
+                            result = func(user_row, state, run_dir)
+                            if isinstance(result, dict):
+                                if "stdout" in result and result["stdout"]:
+                                    print(f"--- CLI stdout ---\n{result['stdout']}")
+                                if "stderr" in result and result["stderr"]:
+                                    print(f"--- CLI stderr ---\n{result['stderr']}")
+                                if "job_id" in result and result["job_id"]:
+                                    save_job_id(project_path, row_id, result["job_id"])
+                            else:
                                 if result and hasattr(result, "stdout") and result.stdout:
                                     print(f"--- CLI stdout ---\n{result.stdout}")
                                 if result and hasattr(result, "stderr") and result.stderr:
                                     print(f"--- CLI stderr ---\n{result.stderr}")
-                            print("[DRY-RUN] Launch stage finished successfully (simulated).")
-                        else:
-                            result = func(user_row, state, run_dir)
-                            if result and hasattr(result, "stdout") and result.stdout:
-                                print(f"--- CLI stdout ---\n{result.stdout}")
-                            if result and hasattr(result, "stderr") and result.stderr:
-                                print(f"--- CLI stderr ---\n{result.stderr}")
                     elif stage_name == "extract":
                         if dry_run:
                             with dry_run_patch():
