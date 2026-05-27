@@ -3,6 +3,7 @@ import sys
 import os
 import argparse
 import subprocess
+import json
 
 parser = argparse.ArgumentParser(description='Process Paraview state.')
 parser.add_argument('--workspace_dir', type=str, help='Workspace directory')
@@ -17,7 +18,7 @@ if args.num_parallel > 1 and args.worker_id == -1:
     print(f"Starting {args.num_parallel} parallel processes for run_id {run_id}...")
     processes = []
     for i in range(args.num_parallel):
-        cmd = [sys.executable, sys.argv[0], '--run_id', str(run_id), '--num_parallel', str(args.num_parallel), '--worker_id', str(i)]
+        cmd = [sys.executable, sys.argv[0],'--workspace_dir', str(args.workspace_dir) ,'--run_id', str(run_id), '--num_parallel', str(args.num_parallel), '--worker_id', str(i)]
         print(f"Launching worker {i}: {' '.join(cmd)}")
         p = subprocess.Popen(cmd)
         processes.append(p)
@@ -29,6 +30,18 @@ if args.num_parallel > 1 and args.worker_id == -1:
     sys.exit(0)
 
 workspace_dir = args.workspace_dir
+
+numproc = 4
+if workspace_dir and run_id is not None:
+    run_status_path = os.path.join(workspace_dir, "runs", f"run_{run_id}", "run_status.txt")
+    if os.path.exists(run_status_path):
+        try:
+            with open(run_status_path, "r") as f:
+                status_data = json.load(f)
+                numproc = status_data.get("num processor", numproc)
+        except Exception as e:
+            print(f"Error reading run_status.txt: {e}")
+
 
 import paraview
 paraview.compatibility.major = 6
@@ -96,11 +109,11 @@ text1 = Text(registrationName='Text1')
 text1.Text = f'Run: {run_id}'
 
 # create a new 'PVD Reader'
-runpvd = PVDReader(registrationName='run.pvd', FileName=f'{workspace_dir}/runs/run_{run_id}/run_P8_OUTPUT/run.pvd')
+runpvd = PVDReader(registrationName='run.pvd', FileName=f'{workspace_dir}/runs/run_{run_id}/run_P{numproc}_OUTPUT/run.pvd')
 runpvd.CellArrays = ['V', 'p', 'T', 'rho', 'mach', 'cp', 'eddy', 'lesregion', 'Qcriterion']
 
 # create a new 'PVD Reader'
-run_wallpvd = PVDReader(registrationName='run_wall.pvd', FileName=f'{workspace_dir}/runs/run_{run_id}/run_P8_OUTPUT/run_wall.pvd')
+run_wallpvd = PVDReader(registrationName='run_wall.pvd', FileName=f'{workspace_dir}/runs/run_{run_id}/run_P{numproc}_OUTPUT/run_wall.pvd')
 run_wallpvd.CellArrays = ['zone', 'cp', 'cf', 'yplus', 'V']
 
 # create a new 'Clip'

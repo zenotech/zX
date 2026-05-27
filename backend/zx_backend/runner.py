@@ -483,6 +483,7 @@ def execute_stage(
     
     # Exclude reserved columns for hook parameter cleanliness
     user_row = {k: v for k, v in row_data.items() if not k.startswith("_zx_")}
+    user_row["row_id"] = int(row_id)
     
     # Setup log file
     try:

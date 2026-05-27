@@ -32,7 +32,7 @@ def initialize(table: DataFrame, state: dict) -> tuple[list[dict], dict]:
                 "p [°/s]": 0.0,
                 "q [°/s]": 0.0,
                 "r [°/s]": 0.0,
-                "Full-Body or Full Body run": "Full-body",
+                "Half-Body or Full Body run": "Full-body",
                 "Comment": "Coarse RANS"
             },
             {
@@ -47,7 +47,7 @@ def initialize(table: DataFrame, state: dict) -> tuple[list[dict], dict]:
                 "p [°/s]": 0.0,
                 "q [°/s]": 0.0,
                 "r [°/s]": 0.0,
-                "Full-Body or Full Body run": "Full-body",
+                "Half-Body or Full Body run": "Full-body",
                 "Comment": "Fine RANS"
             },
         ]

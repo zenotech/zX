@@ -62,6 +62,7 @@ def generate_lower_view(row: dict, state: dict, run_dir: Path):
     if os.path.isdir(run_dir) and (not mp4_file.exists() or force):
         print(f"Generating top view for {run_dir}...")
         command_template = f"({state['paraview_install']}/pvpython --force-offscreen-rendering --opengl-window-backend EGL {state['workspace_dir']}/runs/scripts/lower_fuse_view.py --workspace_dir {state['workspace_dir']} --run_id {run_id} --num_parallel 5)"
+        print(command_template)
         try:
             subprocess.run(command_template, shell=True, check=True)
         except subprocess.CalledProcessError as e:
