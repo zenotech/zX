@@ -741,6 +741,16 @@ async def read_explorer_file(path: str):
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to read PDF file: {str(e)}")
 
+    if ext == ".mp4":
+        try:
+            import base64
+            with open(abs_path, "rb") as f:
+                video_data = f.read()
+            base64_str = base64.b64encode(video_data).decode("utf-8")
+            return {"content": f"data:video/mp4;base64,{base64_str}"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to read video file: {str(e)}")
+
     try:
         with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
             content = f.read()

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Folder, File, Trash2, Edit3, ChevronRight, ChevronDown, 
-  FolderPlus, FilePlus, RefreshCw, X, Eye, FileText
+  FolderPlus, FilePlus, RefreshCw, X, Eye, FileText, Video
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
 
@@ -157,6 +157,8 @@ export default function FileExplorer({ activeProject, apiCall, theme }: FileExpl
               </>
             ) : node.name.toLowerCase().endsWith('.pdf') ? (
               <FileText size={15} style={{ color: '#ef4444', flexShrink: 0 }} />
+            ) : node.name.toLowerCase().endsWith('.mp4') ? (
+              <Video size={15} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} />
             ) : (
               <File size={15} style={{ color: 'var(--text-secondary)', flexShrink: 0 }} />
             )}
@@ -258,7 +260,11 @@ export default function FileExplorer({ activeProject, apiCall, theme }: FileExpl
             <div className="card-header border-bottom border-secondary d-flex justify-content-between align-items-center py-2 px-3 bg-dark bg-opacity-25">
               <div>
                 <h3 className="h6 text-white mb-0 d-flex align-items-center gap-2">
-                  <FileText size={15} className="text-primary" /> {selectedFile.name}
+                  {selectedFile.name.toLowerCase().endsWith('.mp4') ? (
+                    <Video size={15} className="text-primary" />
+                  ) : (
+                    <FileText size={15} className="text-primary" />
+                  )} {selectedFile.name}
                 </h3>
                 <span className="small text-muted font-monospace" style={{ fontSize: '11px' }}>
                   Path: {selectedFile.path} {selectedFile.size !== undefined ? `| Size: ${Math.round(selectedFile.size / 102.4) / 10} KB` : ''}
@@ -364,6 +370,71 @@ export default function FileExplorer({ activeProject, apiCall, theme }: FileExpl
                       Loading PDF...
                     </div>
                   )}
+                </div>
+              ) : selectedFile && selectedFile.name.toLowerCase().endsWith('.mp4') ? (
+                <div style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  justifyContent: 'center', 
+                  alignItems: 'center', 
+                  height: '100%', 
+                  padding: '24px',
+                  background: theme === 'light' ? '#f8f9fa' : '#0a0a0c',
+                  overflow: 'auto'
+                }}>
+                  <div style={{ 
+                    maxWidth: '100%', 
+                    width: '640px',
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '16px',
+                    padding: '20px',
+                    borderRadius: '12px',
+                    background: theme === 'light' ? '#ffffff' : '#121215',
+                    border: theme === 'light' ? '1px solid #e4e4e7' : '1px solid #1f1f23',
+                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+                    transition: 'all 0.3s ease'
+                  }}>
+                    {fileContent && fileContent.startsWith('data:video/mp4') ? (
+                      <div style={{
+                        position: 'relative',
+                        width: '100%',
+                        padding: '4px',
+                        borderRadius: '8px',
+                        background: theme === 'light' ? '#fafafa' : '#09090b',
+                        border: theme === 'light' ? '1px solid #e4e4e7' : '1px solid #27272a',
+                        boxShadow: 'inset 0 2px 4px 0 rgba(0, 0, 0, 0.06)'
+                      }}>
+                        <video 
+                          src={fileContent} 
+                          controls
+                          autoPlay
+                          loop
+                          style={{ 
+                            width: '100%', 
+                            maxHeight: '50vh', 
+                            display: 'block',
+                            borderRadius: '6px',
+                            outline: 'none',
+                            backgroundColor: '#000'
+                          }} 
+                        />
+                      </div>
+                    ) : (
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '200px', color: 'var(--text-secondary)' }}>
+                        <div className="spinner-border spinner-border-sm text-primary" role="status" style={{ marginRight: '8px' }}></div>
+                        Loading video...
+                      </div>
+                    )}
+                    <div style={{ textAlign: 'center', width: '100%' }}>
+                      <p style={{ margin: 0, fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{selectedFile.name}</p>
+                      <p style={{ margin: '4px 0 0 0', fontSize: '11px', color: 'var(--text-muted)' }}>
+                        {selectedFile.size !== undefined ? `Size: ${Math.round(selectedFile.size / 102.4) / 10} KB` : ''}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <Editor

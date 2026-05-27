@@ -1,0 +1,44 @@
+#---
+# https://github.com/Wandmalfarbe/pandoc-latex-template
+# docker pull --platform linux/amd64 pandoc/extra
+# docker build --platform linux/amd64 -t my-pandoc-extra-image -f ./Dockerfile.txt .
+# alias pandockdocker='docker run --platform linux/amd64 --rm -v "$(pwd):/data" -u $(id -u):$(id -g) my-pandoc-extra-image'
+# pandockdocker HX-2-Performance-Analysis.md -o  HX-2-Performance-Analysis.pdf  --template eisvogel --metadata date="`date "+%B %e, %Y"`" --listings --pdf-engine=xelatex
+title: "Performance Analysis"
+date: "`\today`"
+author: "Zenotech Ltd"
+version: "v1.1"
+geometry: "left=20mm, top=20mm, bottom=20mm, right=20mm"
+papersize: a4
+titlepage: true
+titlepage-color: "FFFFFF"
+titlepage-text-color: "000000"
+titlepage-rule-color: "CCCCCC"
+titlepage-rule-height: 4
+titlepage-logo: "images/Zenotech_Mark_Strapline_Full_Colour_Horizontal.pdf"
+logo: "imagesZenotech_Mark_Strapline_Full_Colour_Horizontal.pdf"
+logo-width: 100mm
+toc-own-page: true
+page-background:
+page-background-opacity:
+links-as-notes: true
+lot: false
+lof: false
+listings-disable-line-numbers: true
+listings-no-page-break: false
+disable-header-and-footer: false
+header-left: "v1.1"
+header-center: "\\\ "
+header-right:
+footer-left:
+footer-center: "Commercial in Confidence"
+footer-right:
+subparagraph: true
+lang: en-GB
+output: pdf_document
+# watermark: "DRAFT"
+graphics: true
+#header-includes:
+#  - \usepackage{geometry}  # For better control over page layout/margins
+##  - \usepackage{pdflscape} # For rotating individual pages
+#---

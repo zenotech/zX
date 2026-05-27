@@ -74,6 +74,11 @@ renderView1.Set(
     BackEnd='OSPRay raycaster',
     Shadows=1,
     OSPRayMaterialLibrary=materialLibrary1,
+    BackgroundTexture=None,
+    UseColorPaletteForBackground=0,
+    BackgroundColorMode='Gradient',
+    Background2=[0.8509804010391235, 0.8313725590705872, 0.8196078538894653],
+    Background=[0.29019609093666077, 0.2705882489681244, 0.25882354378700256],
 )
 
 SetActiveView(None)

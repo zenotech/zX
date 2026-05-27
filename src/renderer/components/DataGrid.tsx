@@ -20,12 +20,77 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
   const [editingCell, setEditingCell] = useState<{ rowIdx: number, colKey: string } | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   
-  // Execution options
-  const [execPreprocess, setExecPreprocess] = useState(true);
-  const [execLaunch, setExecLaunch] = useState(true);
-  const [execExtract, setExecExtract] = useState(true);
-  const [execExplore, setExecExplore] = useState(true);
-  const [forceRerun, setForceRerun] = useState(false);
+  // Execution options with localStorage persistence namespaced by activeProject
+  const [execPreprocess, setExecPreprocess] = useState<boolean>(() => {
+    const saved = localStorage.getItem(`zx_exec_preprocess_${activeProject}`);
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [execLaunch, setExecLaunch] = useState<boolean>(() => {
+    const saved = localStorage.getItem(`zx_exec_launch_${activeProject}`);
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [execExtract, setExecExtract] = useState<boolean>(() => {
+    const saved = localStorage.getItem(`zx_exec_extract_${activeProject}`);
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [execExplore, setExecExplore] = useState<boolean>(() => {
+    const saved = localStorage.getItem(`zx_exec_explore_${activeProject}`);
+    return saved !== null ? saved === 'true' : true;
+  });
+  const [forceRerun, setForceRerun] = useState<boolean>(() => {
+    const saved = localStorage.getItem(`zx_force_rerun_${activeProject}`);
+    return saved !== null ? saved === 'true' : false;
+  });
+
+  // Sync execution options to localStorage when changed
+  useEffect(() => {
+    if (activeProject) {
+      localStorage.setItem(`zx_exec_preprocess_${activeProject}`, String(execPreprocess));
+    }
+  }, [execPreprocess, activeProject]);
+
+  useEffect(() => {
+    if (activeProject) {
+      localStorage.setItem(`zx_exec_launch_${activeProject}`, String(execLaunch));
+    }
+  }, [execLaunch, activeProject]);
+
+  useEffect(() => {
+    if (activeProject) {
+      localStorage.setItem(`zx_exec_extract_${activeProject}`, String(execExtract));
+    }
+  }, [execExtract, activeProject]);
+
+  useEffect(() => {
+    if (activeProject) {
+      localStorage.setItem(`zx_exec_explore_${activeProject}`, String(execExplore));
+    }
+  }, [execExplore, activeProject]);
+
+  useEffect(() => {
+    if (activeProject) {
+      localStorage.setItem(`zx_force_rerun_${activeProject}`, String(forceRerun));
+    }
+  }, [forceRerun, activeProject]);
+
+  // Sync checkbox state when activeProject changes
+  useEffect(() => {
+    if (!activeProject) return;
+    const pSaved = localStorage.getItem(`zx_exec_preprocess_${activeProject}`);
+    setExecPreprocess(pSaved !== null ? pSaved === 'true' : true);
+
+    const lSaved = localStorage.getItem(`zx_exec_launch_${activeProject}`);
+    setExecLaunch(lSaved !== null ? lSaved === 'true' : true);
+
+    const exSaved = localStorage.getItem(`zx_exec_extract_${activeProject}`);
+    setExecExtract(exSaved !== null ? exSaved === 'true' : true);
+
+    const esSaved = localStorage.getItem(`zx_exec_explore_${activeProject}`);
+    setExecExplore(esSaved !== null ? esSaved === 'true' : true);
+
+    const fSaved = localStorage.getItem(`zx_force_rerun_${activeProject}`);
+    setForceRerun(fSaved !== null ? fSaved === 'true' : false);
+  }, [activeProject]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
