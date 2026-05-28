@@ -48,6 +48,7 @@
     "appId": "com.zenotech.zx",
     "productName": "zX",
     "copyright": "Copyright © 2026 Zenotech Ltd.",
+    "npmRebuild": false,
     "directories": {
       "output": "release"
     },
@@ -82,9 +83,7 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",
-      "notarize": {
-        "teamId": "HDDG45ZM4G"
-      }
+      "notarize": true
     },
     "dmg": {
       "icon": "build/icon.icns"
