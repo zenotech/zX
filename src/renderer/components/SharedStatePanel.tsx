@@ -63,6 +63,8 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
       parsedVal = parseFloat(newValue) || 0;
     } else if (newType === 'boolean') {
       parsedVal = newValue.toLowerCase() === 'true';
+    } else if (typeof newValue === 'string') {
+      parsedVal = newValue.trim();
     }
 
     setStateData(prev => ({
@@ -124,16 +126,16 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
 
   // Custom parameters exclude system/core ones
   const customKeys = Object.keys(stateData).filter(
-    k => !['max_iterations', 'current_iteration', 'use_slurm', 'slurm_poll_interval'].includes(k)
+    k => !['max_iterations', 'current_iteration', 'use_slurm', 'slurm_poll_interval', 'workspace_dir'].includes(k)
   );
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', height: '100%', gap: '20px', padding: '24px', overflow: 'hidden', animation: 'slideUp 0.3s ease-out' }}>
       {/* LEFT: MAIN FORM CONTROL CONFIG */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', paddingRight: '4px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', height: '100%', overflow: 'hidden' }}>
         
         {/* HEADER & SAVING STATUS */}
-        <div className="d-flex align-items-center justify-content-between">
+        <div className="d-flex align-items-center justify-content-between" style={{ flexShrink: 0 }}>
           <div>
             <h2 className="h4 text-white fw-bold mb-1">Shared Global State</h2>
             <p className="text-secondary small mb-0">Shared runtime configuration variables passed dynamically to all execution and explore hooks.</p>
@@ -172,7 +174,10 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
           </div>
         </div>
 
-        {/* CORE PARAMETERS SECTION */}
+        {/* SCROLLABLE CONFIG CONTENT */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', overflowY: 'auto', paddingRight: '4px', flexGrow: 1 }}>
+
+          {/* CORE PARAMETERS SECTION */}
         <div className="card p-4 shadow-sm border border-secondary bg-dark bg-opacity-10 d-flex flex-column gap-3">
           <h3 className="h6 text-white text-uppercase fw-bold border-bottom border-secondary pb-2 mb-2 d-flex align-items-center gap-2">
             <Sliders size={14} className="text-primary" /> Core Optimization Loop Parameters
@@ -318,6 +323,7 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
               </table>
             </div>
           )}
+        </div>
         </div>
       </div>
 

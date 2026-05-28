@@ -130,6 +130,15 @@ def save_state(project_path: str, state: Dict[str, Any]) -> None:
         logger.error(f"Failed to save state json to {state_path}: {e}")
 
 def run_state_hook(project_path: str, state: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    # Synchronize deletions: remove keys from state that are not present in updates
+    # (except for system-managed parameters like workspace_dir and current_iteration)
+    keys_to_delete = [
+        k for k in state.keys() 
+        if k not in updates and k not in ("workspace_dir", "current_iteration")
+    ]
+    for k in keys_to_delete:
+        state.pop(k, None)
+
     hook_path = Path(project_path) / "hooks" / "state.py"
     module = load_hook_module(hook_path, "state_hook")
     

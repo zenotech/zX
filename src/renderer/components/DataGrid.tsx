@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, Square, Plus, Trash2, ShieldAlert, FileInput, 
-  RefreshCw, CheckSquare, SquareCheck, RefreshCwOff, ShieldCheck, HelpCircle
+  RefreshCw, CheckSquare, SquareCheck, RefreshCwOff, ShieldCheck, HelpCircle,
+  Monitor
 } from 'lucide-react';
 
 interface DataGridProps {
@@ -92,7 +93,38 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
     setForceRerun(fSaved !== null ? fSaved === 'true' : false);
   }, [activeProject]);
 
+  // Close context menu on outside click
+  useEffect(() => {
+    const handleOutsideClick = () => {
+      setContextMenu(null);
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, []);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Right-click Row Context Menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, rowId: number } | null>(null);
+
+  const handleRowContextMenu = (e: React.MouseEvent, rowId: number) => {
+    e.preventDefault();
+    
+    const menuWidth = 160;
+    const menuHeight = 82;
+    let x = e.clientX;
+    let y = e.clientY;
+    
+    // Boundary check
+    if (x + menuWidth > window.innerWidth) {
+      x = window.innerWidth - menuWidth - 10;
+    }
+    if (y + menuHeight > window.innerHeight) {
+      y = window.innerHeight - menuHeight - 10;
+    }
+    
+    setContextMenu({ x, y, rowId });
+  };
 
   // Hover Popover States for zx_hook.log and explore_{iteration}.log
   const [popoverType, setPopoverType] = useState<'status' | 'iteration' | null>(null);
@@ -501,10 +533,10 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
     }
   };
 
-  const triggerExecution = async (isDryRun: boolean) => {
+  const triggerExecution = async (isDryRun: boolean, targetRowIds?: number[]) => {
     if (!activeProject) return;
     try {
-      const selected = selectedRows.length > 0 ? selectedRows : data.map(r => r._zx_row_id);
+      const selected = targetRowIds || (selectedRows.length > 0 ? selectedRows : data.map(r => r._zx_row_id));
       
       const hooksList = [];
       if (execPreprocess) hooksList.push('preprocessing');
@@ -704,8 +736,10 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
                       key={row._zx_row_id} 
                       className={isRowSelected ? 'table-primary bg-opacity-10' : ''}
                       style={{ 
-                        transition: 'background 0.2s'
+                        transition: 'background 0.2s',
+                        cursor: 'context-menu'
                       }}
+                      onContextMenu={(e) => handleRowContextMenu(e, row._zx_row_id)}
                     >
                       <td style={{ textAlign: 'center', borderRight: '1px solid var(--border-color)', padding: '8px' }}>
                         <input 
@@ -870,6 +904,48 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
                 No log entries found.
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div 
+          className="context-menu"
+          style={{
+            top: contextMenu.y,
+            left: contextMenu.x
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.stopPropagation()}
+        >
+          <div 
+            className="context-menu-item"
+            onClick={() => {
+              triggerExecution(false, [contextMenu.rowId]);
+              setContextMenu(null);
+            }}
+          >
+            <Play size={14} style={{ color: 'var(--accent-cyan)' }} fill="var(--accent-cyan)" />
+            <span>Start Run</span>
+          </div>
+          <div 
+            className="context-menu-item"
+            onClick={async () => {
+              const rowId = contextMenu.rowId;
+              setContextMenu(null);
+              try {
+                const res = await window.zxAPI.runZmon(activeProject, rowId);
+                if (res.status === 'error') {
+                  alert(`Failed to start zmon: ${res.message}`);
+                }
+              } catch (err: any) {
+                alert(`Error starting zmon: ${err.message || err}`);
+              }
+            }}
+          >
+            <Monitor size={14} style={{ color: 'var(--accent-purple)' }} />
+            <span>Run zmon</span>
           </div>
         </div>
       )}

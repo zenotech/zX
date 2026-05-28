@@ -10,5 +10,6 @@ contextBridge.exposeInMainWorld('zxAPI', {
   startLocalBackend: () => ipcRenderer.invoke('start-local-backend'),
   openDirectoryDialog: () => ipcRenderer.invoke('open-directory-dialog'),
   stopBackend: () => ipcRenderer.invoke('stop-backend'),
+  runZmon: (activeProject: string, rowId: number) => ipcRenderer.invoke('run-zmon', activeProject, rowId),
 });
 

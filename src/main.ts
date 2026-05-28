@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'path';
 import { spawn, ChildProcess, exec } from 'child_process';
 import crypto from 'crypto';
@@ -14,6 +14,9 @@ let authToken: string = '';
 let isBootstrapping = false;
 let PORT = 8000;
 let remotePortActive: number | null = null;
+let zmonLocalProcess: ChildProcess | null = null;
+let zmonTunnelServer: net.Server | null = null;
+let activeZmonRemotePort: number | null = null;
 
 interface AppSettings {
   recentProjects: any[];
@@ -52,8 +55,46 @@ function saveSettings(settings: AppSettings) {
 // Generate Auth Token
 authToken = crypto.randomUUID();
 
+async function stopZmon(): Promise<void> {
+  console.log('stopZmon: stopping active zmon processes/tunnels...');
+  if (sshClient && activeZmonRemotePort !== null) {
+    try {
+      console.log(`Stopping remote zmon process on port ${activeZmonRemotePort}...`);
+      const killCmd = `kill $(cat ~/.zx/zmon_${activeZmonRemotePort}.pid) 2>/dev/null || kill $(lsof -t -i :${activeZmonRemotePort}) 2>/dev/null || rm -f ~/.zx/zmon_${activeZmonRemotePort}.pid || true`;
+      const pkillPromise = execCommand(sshClient, killCmd);
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 1500));
+      await Promise.race([pkillPromise, timeoutPromise]);
+      console.log('Remote zmon shutdown complete or timed out.');
+    } catch (e) {
+      console.error('Failed to execute remote zmon kill command:', e);
+    }
+    activeZmonRemotePort = null;
+  }
+
+  if (zmonLocalProcess) {
+    try {
+      console.log('Killing local zmon process...');
+      zmonLocalProcess.kill();
+    } catch (e) {
+      console.error('Error killing local zmon process:', e);
+    }
+    zmonLocalProcess = null;
+  }
+
+  if (zmonTunnelServer) {
+    try {
+      console.log('Closing local zmon tunnel server...');
+      zmonTunnelServer.close();
+    } catch (e) {
+      console.error('Error closing local zmon tunnel server:', e);
+    }
+    zmonTunnelServer = null;
+  }
+}
+
 async function stopBackendProcesses(): Promise<void> {
   console.log('stopBackendProcesses: stopping active backend processes...');
+  await stopZmon();
   if (sshClient) {
     if (remotePortActive !== null) {
       try {
@@ -439,6 +480,16 @@ app.on('quit', () => {
       tunnelServer.close();
     } catch (e) {}
   }
+  if (zmonLocalProcess) {
+    try {
+      zmonLocalProcess.kill();
+    } catch (e) {}
+  }
+  if (zmonTunnelServer) {
+    try {
+      zmonTunnelServer.close();
+    } catch (e) {}
+  }
 });
 
 // IPC communication channel definitions
@@ -457,6 +508,202 @@ ipcMain.handle('start-local-backend', async () => {
 ipcMain.handle('stop-backend', async () => {
   await stopBackendProcesses();
   return true;
+});
+
+ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number) => {
+  console.log(`ipcMain: run-zmon requested for row ${rowId} (project: ${activeProject})`);
+  
+  // 1. Stop any existing zmon processes/tunnels to avoid port conflicts
+  await stopZmon();
+
+  try {
+    if (sshClient) {
+      // REMOTE zmon path
+      console.log('Running zmon remotely...');
+      
+      // Query remote state for zmon_install path if configured
+      let remoteZmonCommand = 'zmon';
+      if (activeProject) {
+        try {
+          const catCmd = `cat "${activeProject}/zx_state.json" 2>/dev/null || echo "{}"`;
+          const stateContent = await execCommand(sshClient, catCmd);
+          const state = JSON.parse(stateContent.trim());
+          if (state && state.zmon_install) {
+            const installPath = state.zmon_install.trim();
+            if (installPath) {
+              let targetCommand = installPath;
+              const remoteCheck = `python3 -c "import os; p = os.path.expanduser('${installPath}'); print('DIR' if os.path.isdir(p) else 'FILE')"`;
+              try {
+                const checkRes = await execCommand(sshClient, remoteCheck);
+                if (checkRes.trim() === 'DIR' || !installPath.endsWith('zmon')) {
+                  targetCommand = installPath.endsWith('/') ? `${installPath}zmon` : `${installPath}/zmon`;
+                }
+              } catch (e) {
+                if (!installPath.endsWith('zmon')) {
+                  targetCommand = installPath.endsWith('/') ? `${installPath}zmon` : `${installPath}/zmon`;
+                }
+              }
+              remoteZmonCommand = targetCommand;
+              console.log(`Remote zmon command resolved to: ${remoteZmonCommand}`);
+            }
+          }
+        } catch (e) {
+          console.log('Remote zmon_install key check failed or not found:', e);
+        }
+      }
+
+      // A. Discover a free port on the remote server
+      const remotePortStr = await execCommand(sshClient, 'python3 -c "import socket; s=socket.socket(); s.bind((\'127.0.0.1\', 0)); print(s.getsockname()[1]); s.close()"');
+      const remotePort = parseInt(remotePortStr.trim(), 10);
+      if (isNaN(remotePort)) {
+        throw new Error('Failed to discover free remote port for zmon');
+      }
+      console.log(`Remote free port discovered for zmon: ${remotePort}`);
+
+      // B. Start zmon remotely in background
+      const remoteRunDir = `${activeProject}/runs/run_${rowId}`;
+      const startCmd = `
+        mkdir -p "${remoteRunDir}"
+        cd "${remoteRunDir}"
+        export PATH="$HOME/.nvm/versions/node/v*/bin:$HOME/.local/bin:/usr/local/bin:/opt/homebrew/bin:$PATH"
+        export PORT=${remotePort}
+        nohup ${remoteZmonCommand} --port ${remotePort} > ~/.zx/zmon.log 2>&1 &
+        echo $! > ~/.zx/zmon_${remotePort}.pid
+        
+        # Wait up to 5s for the zmon port to bind and become active
+        i=0
+        while [ $i -lt 5 ]; do
+          if python3 -c "import socket; s=socket.socket(); s.connect(('127.0.0.1', ${remotePort}))" 2>/dev/null; then
+            exit 0
+          fi
+          sleep 0.5
+          i=$((i+1))
+        done
+        echo "Warning: remote zmon didn't bind port in time, proceeding anyway"
+        exit 0
+      `;
+      
+      try {
+        await execCommand(sshClient, startCmd);
+        console.log(`Remote zmon started on remote port ${remotePort}`);
+      } catch (err: any) {
+        console.error('Remote zmon start command failed:', err);
+        throw new Error(`Failed to start zmon remotely: ${err.message || err}`);
+      }
+
+      activeZmonRemotePort = remotePort;
+
+      // C. Allocate a free local port
+      const localPort = await getFreeLocalPort();
+      console.log(`Local free port discovered for zmon forwarding: ${localPort}`);
+
+      // D. Establish local TCP port forwarding tunnel
+      zmonTunnelServer = await createLocalForwardTunnel(sshClient, localPort, remotePort);
+      console.log(`Local port forward tunnel established for zmon: 127.0.0.1:${localPort} -> remote:${remotePort}`);
+
+      // E. Start web browser locally to connect to localPort
+      const url = `http://127.0.0.1:${localPort}`;
+      console.log(`Opening browser at ${url}`);
+      await shell.openExternal(url);
+
+      return { status: 'success', isRemote: true, port: localPort };
+    } else {
+      // LOCAL zmon path
+      console.log('Running zmon locally...');
+      
+      // Query local state for zmon_install path if configured
+      let localZmonCommand = 'zmon';
+      if (activeProject) {
+        try {
+          const statePath = path.join(activeProject, 'zx_state.json');
+          if (fs.existsSync(statePath)) {
+            const stateContent = fs.readFileSync(statePath, 'utf8');
+            const state = JSON.parse(stateContent);
+            if (state && state.zmon_install) {
+              const installPath = state.zmon_install.trim();
+              if (installPath) {
+                let targetCommand = installPath;
+                try {
+                  if (fs.existsSync(installPath) && fs.statSync(installPath).isDirectory()) {
+                    targetCommand = path.join(installPath, 'zmon');
+                  } else if (!installPath.endsWith('zmon')) {
+                    targetCommand = path.join(installPath, 'zmon');
+                  }
+                } catch (e) {
+                  if (!installPath.endsWith('zmon')) {
+                    targetCommand = path.join(installPath, 'zmon');
+                  }
+                }
+                localZmonCommand = targetCommand;
+                console.log(`Local zmon command resolved to: ${localZmonCommand}`);
+              }
+            }
+          }
+        } catch (e) {
+          console.log('Local zmon_install key check failed or not found:', e);
+        }
+      }
+
+      // A. Discover a free local port
+      const localPort = await getFreeLocalPort();
+      console.log(`Local free port discovered for zmon: ${localPort}`);
+
+      // B. Start zmon locally in background
+      const homeDir = app.getPath('home');
+      const localBin = path.join(homeDir, '.local/bin');
+      const systemPath = process.env.PATH || '';
+      const extendedPath = process.platform === 'darwin'
+        ? `${localBin}:/opt/homebrew/bin:/usr/local/bin:${systemPath}`
+        : systemPath;
+
+      const env = {
+        ...process.env,
+        PATH: extendedPath,
+        PORT: String(localPort)
+      };
+
+      const localRunDir = path.join(activeProject, 'runs', `run_${rowId}`);
+      try {
+        if (!fs.existsSync(localRunDir)) {
+          fs.mkdirSync(localRunDir, { recursive: true });
+        }
+      } catch (err) {
+        console.error('Failed to create local run directory for zmon:', err);
+      }
+
+      console.log(`Spawning local zmon [${localZmonCommand}] on port ${localPort} inside ${localRunDir}...`);
+      zmonLocalProcess = spawn(localZmonCommand, ['--port', String(localPort)], {
+        shell: true,
+        cwd: localRunDir,
+        env
+      });
+
+      zmonLocalProcess.on('error', (err) => {
+        console.error('Failed to start local zmon process:', err);
+      });
+
+      zmonLocalProcess.stdout?.on('data', (data) => {
+        console.log(`[zmon stdout]: ${data}`);
+      });
+
+      zmonLocalProcess.stderr?.on('data', (data) => {
+        console.error(`[zmon stderr]: ${data}`);
+      });
+
+      // Wait a short duration (1s) to allow it to initialize
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // C. Start web browser to connect to localPort
+      const url = `http://127.0.0.1:${localPort}`;
+      console.log(`Opening browser at ${url}`);
+      await shell.openExternal(url);
+
+      return { status: 'success', isRemote: false, port: localPort };
+    }
+  } catch (err: any) {
+    console.error('Failed to run zmon:', err);
+    return { status: 'error', message: err.message || String(err) };
+  }
 });
 
 ipcMain.handle('open-directory-dialog', async () => {
