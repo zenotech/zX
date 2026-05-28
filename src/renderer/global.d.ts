@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 export interface IZxAPI {
   getAuthToken: () => Promise<string>;
   getBackendPort: () => Promise<number>;

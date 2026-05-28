@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal } from 'xterm';
-import { FitAddon } from 'xterm-addon-fit';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
 import { Plus, Trash2, Maximize2, SplitSquareHorizontal, Columns, LayoutGrid, Terminal as TermIcon } from 'lucide-react';
-import 'xterm/css/xterm.css';
+import '@xterm/xterm/css/xterm.css';
 
 interface TerminalPanelProps {
   authToken: string;
