@@ -9,6 +9,7 @@ authors = [
     { name = "Zenotech Ltd", email = "info@zenotech.com" }
 ]
 description = "zX Parametric Exploration sidecar Python backend"
+license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "zX Parametric Exploration Desktop Application",
   "author": "Zenotech Ltd <info@zenotech.com>",
+  "license": "MIT",
   "homepage": "https://github.com/zenotech/zX",
   "repository": {
     "type": "git",
