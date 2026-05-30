@@ -604,7 +604,7 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number) => {
       // E. Start web browser locally to connect to localPort
       const url = `http://127.0.0.1:${localPort}`;
       console.log(`Opening browser at ${url}`);
-      await shell.openExternal(url);
+      await openMinimalistBrowser(url);
 
       return { status: 'success', isRemote: true, port: localPort };
     } else {
@@ -696,7 +696,7 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number) => {
       // C. Start web browser to connect to localPort
       const url = `http://127.0.0.1:${localPort}`;
       console.log(`Opening browser at ${url}`);
-      await shell.openExternal(url);
+      await openMinimalistBrowser(url);
 
       return { status: 'success', isRemote: false, port: localPort };
     }
@@ -866,6 +866,32 @@ function getFreeLocalPort(): Promise<number> {
     });
     server.on('error', (err) => {
       reject(err);
+    });
+  });
+}
+
+async function openMinimalistBrowser(url: string): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let cmd = '';
+    if (process.platform === 'win32') {
+      cmd = `start chrome --app=${url}`;
+    } else if (process.platform === 'darwin') {
+      cmd = `open -a "Google Chrome" --args --app=${url}`;
+    } else {
+      cmd = `google-chrome --app=${url}`;
+    }
+
+    console.log(`Launching minimalist browser: ${cmd}`);
+    exec(cmd, async (error) => {
+      if (error) {
+        console.error(`Failed to launch minimalist browser with command: ${cmd}. Falling back to default browser. Error:`, error);
+        try {
+          await shell.openExternal(url);
+        } catch (fallbackErr) {
+          console.error(`Fallback browser launch also failed:`, fallbackErr);
+        }
+      }
+      resolve();
     });
   });
 }
