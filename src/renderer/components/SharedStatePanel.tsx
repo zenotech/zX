@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Save, Plus, Trash2, Sliders, ToggleLeft, ToggleRight, Loader2, CheckCircle2, AlertCircle, HelpCircle } from 'lucide-react';
 
 interface SharedStatePanelProps {
@@ -77,8 +77,8 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
     setSaveStatus('idle');
   };
 
-  const handleSave = async () => {
-    if (!activeProject) return;
+  const handleSave = useCallback(async () => {
+    if (!activeProject || saving) return;
     setSaving(true);
     setSaveStatus('idle');
     try {
@@ -98,7 +98,21 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
     } finally {
       setSaving(false);
     }
-  };
+  }, [activeProject, stateData, saving, apiCall]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [handleSave]);
 
   if (!activeProject) {
     return (
@@ -160,6 +174,7 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
               onClick={handleSave}
               disabled={saving}
               className="btn btn-sm btn-cyan px-4 py-2"
+              title="Save Configuration (Ctrl+S / ⌘S)"
             >
               {saving ? (
                 <>
