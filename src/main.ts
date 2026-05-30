@@ -144,10 +144,10 @@ function resolveLocalWheel(): { localWheel: string; wheelFilename: string } {
     path.join(process.resourcesPath, 'backend/dist'),
     path.join(process.cwd(), 'backend/dist')
   ];
-  
+
   let localWheel = '';
   let wheelFilename = 'zx_backend-0.1.0-py3-none-any.whl'; // fallback default
-  
+
   for (const dir of possibleDirs) {
     if (fs.existsSync(dir)) {
       try {
@@ -163,7 +163,7 @@ function resolveLocalWheel(): { localWheel: string; wheelFilename: string } {
       }
     }
   }
-  
+
   if (!localWheel) {
     localWheel = path.join(__dirname, '../backend/dist/zx_backend-0.1.0-py3-none-any.whl');
     if (!fs.existsSync(localWheel)) {
@@ -186,7 +186,7 @@ function resolveLocalProjectsDir(): string {
     path.join(process.resourcesPath, 'projects'),
     path.join(process.cwd(), 'projects')
   ];
-  
+
   for (const dir of possibleDirs) {
     if (fs.existsSync(dir) && fs.statSync(dir).isDirectory()) {
       return dir;
@@ -251,14 +251,14 @@ async function startBackend(): Promise<number> {
 
     console.log('Spawning Local FastAPI backend...');
     const isDev = !app.isPackaged;
-    
+
     const homeDir = app.getPath('home');
     const localBin = path.join(homeDir, '.local/bin');
     const systemPath = process.env.PATH || '';
     const extendedPath = process.platform === 'darwin'
       ? `${localBin}:/opt/homebrew/bin:/usr/local/bin:${systemPath}`
       : systemPath;
-    
+
     const env: Record<string, string> = {
       ...process.env,
       PATH: extendedPath,
@@ -405,7 +405,7 @@ async function startBackend(): Promise<number> {
 
 function createWindow() {
   const settings = loadSettings();
-  
+
   mainWindow = new BrowserWindow({
     width: settings.windowWidth,
     height: settings.windowHeight,
@@ -468,27 +468,27 @@ app.on('quit', () => {
   if (backendProcess) {
     try {
       backendProcess.kill();
-    } catch (e) {}
+    } catch (e) { }
   }
   if (sshClient) {
     try {
       sshClient.end();
-    } catch (e) {}
+    } catch (e) { }
   }
   if (tunnelServer) {
     try {
       tunnelServer.close();
-    } catch (e) {}
+    } catch (e) { }
   }
   if (zmonLocalProcess) {
     try {
       zmonLocalProcess.kill();
-    } catch (e) {}
+    } catch (e) { }
   }
   if (zmonTunnelServer) {
     try {
       zmonTunnelServer.close();
-    } catch (e) {}
+    } catch (e) { }
   }
 });
 
@@ -510,9 +510,9 @@ ipcMain.handle('stop-backend', async () => {
   return true;
 });
 
-ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number) => {
-  console.log(`ipcMain: run-zmon requested for row ${rowId} (project: ${activeProject})`);
-  
+ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number, theme?: string) => {
+  console.log(`ipcMain: run-zmon requested for row ${rowId} (project: ${activeProject}, theme: ${theme})`);
+
   // 1. Stop any existing zmon processes/tunnels to avoid port conflicts
   await stopZmon();
 
@@ -520,7 +520,7 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number) => {
     if (sshClient) {
       // REMOTE zmon path
       console.log('Running zmon remotely...');
-      
+
       // Query remote state for zmon_install path if configured
       let remoteZmonCommand = 'zmon';
       if (activeProject) {
@@ -582,7 +582,7 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number) => {
         echo "Warning: remote zmon didn't bind port in time, proceeding anyway"
         exit 0
       `;
-      
+
       try {
         await execCommand(sshClient, startCmd);
         console.log(`Remote zmon started on remote port ${remotePort}`);
@@ -602,7 +602,11 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number) => {
       console.log(`Local port forward tunnel established for zmon: 127.0.0.1:${localPort} -> remote:${remotePort}`);
 
       // E. Start web browser locally to connect to localPort
-      const url = `http://127.0.0.1:${localPort}`;
+      let url = `http://127.0.0.1:${localPort}`;
+      if (theme) {
+        const isLight = theme === 'light';
+        url += `?theme=${theme}`;
+      }
       console.log(`Opening browser at ${url}`);
       await openMinimalistBrowser(url);
 
@@ -610,7 +614,7 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number) => {
     } else {
       // LOCAL zmon path
       console.log('Running zmon locally...');
-      
+
       // Query local state for zmon_install path if configured
       let localZmonCommand = 'zmon';
       if (activeProject) {
@@ -694,7 +698,11 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number) => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       // C. Start web browser to connect to localPort
-      const url = `http://127.0.0.1:${localPort}`;
+      let url = `http://127.0.0.1:${localPort}`;
+      if (theme) {
+        const isLight = theme === 'light';
+        url += `?theme=${theme}`;
+      }
       console.log(`Opening browser at ${url}`);
       await openMinimalistBrowser(url);
 
@@ -759,21 +767,21 @@ function getSSHConfigForHost(hostName: string): SSHHostConfig {
     username: process.env.USER || 'root',
     agent: process.env.SSH_AUTH_SOCK
   };
-  
+
   const sshConfigPath = path.join(process.env.HOME || process.env.USERPROFILE || '', '.ssh', 'config');
   if (!fs.existsSync(sshConfigPath)) {
     return config;
   }
-  
+
   try {
     const content = fs.readFileSync(sshConfigPath, 'utf8');
     const lines = content.split('\n');
     let insideTargetHost = false;
-    
+
     for (let line of lines) {
       line = line.trim();
       if (!line || line.startsWith('#')) continue;
-      
+
       const hostMatch = line.match(/^Host\s+(.+)$/i);
       if (hostMatch) {
         const currentHost = hostMatch[1].trim();
@@ -784,13 +792,13 @@ function getSSHConfigForHost(hostName: string): SSHHostConfig {
         }
         continue;
       }
-      
+
       if (insideTargetHost) {
         const keyValueMatch = line.match(/^([a-zA-Z0-9_\-]+)\s+(.+)$/);
         if (keyValueMatch) {
           const key = keyValueMatch[1].toLowerCase();
           const value = keyValueMatch[2].trim();
-          
+
           if (key === 'hostname') {
             config.host = value;
           } else if (key === 'user') {
@@ -819,7 +827,7 @@ function getSSHConfigForHost(hostName: string): SSHHostConfig {
   } catch (err) {
     console.error('Failed to parse ssh config for host details', err);
   }
-  
+
   return config;
 }
 
@@ -827,22 +835,22 @@ function execCommand(client: Client, cmd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     client.exec(cmd, (err, stream) => {
       if (err) return reject(err);
-      
+
       let stdout = '';
       let stderr = '';
-      
+
       stream.on('data', (data: any) => {
         const str = data.toString();
         stdout += str;
         console.log(`[SSH STDOUT]: ${str.trim()}`);
       });
-      
+
       stream.stderr.on('data', (data: any) => {
         const str = data.toString();
         stderr += str;
         console.error(`[SSH STDERR]: ${str.trim()}`);
       });
-      
+
       stream.on('close', (code: number) => {
         if (code === 0) {
           resolve(stdout);
@@ -876,7 +884,7 @@ async function openMinimalistBrowser(url: string): Promise<void> {
     if (process.platform === 'win32') {
       cmd = `start chrome --app=${url}`;
     } else if (process.platform === 'darwin') {
-      cmd = `open -a "Google Chrome" --args --app=${url}`;
+      cmd = `open -n -a "Google Chrome" --args --app=${url}`;
     } else {
       cmd = `google-chrome --app=${url}`;
     }
@@ -931,7 +939,7 @@ function uploadFileSFTP(client: Client, localPath: string, remotePath: string): 
   return new Promise((resolve, reject) => {
     client.sftp((err, sftp) => {
       if (err) return reject(err);
-      
+
       console.log(`SFTP: Uploading ${localPath} to ${remotePath}...`);
       sftp.fastPut(localPath, remotePath, {}, (uploadErr) => {
         if (uploadErr) return reject(uploadErr);
@@ -995,12 +1003,12 @@ function createLocalForwardTunnel(client: Client, localPort: number, remotePort:
         socket.pipe(stream).pipe(socket);
       });
     });
-    
+
     server.listen(localPort, '127.0.0.1', () => {
       console.log(`Local port forward server listening on 127.0.0.1:${localPort} -> remote:${remotePort}`);
       resolve(server);
     });
-    
+
     server.on('error', (err) => {
       reject(err);
     });
@@ -1010,7 +1018,7 @@ function createLocalForwardTunnel(client: Client, localPort: number, remotePort:
 // SSH Bootstrapping & Port Forwarding Manager (Phase 6)
 ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
   console.log(`SSH Remote Connection to host: ${hostName}`);
-  
+
   await stopBackendProcesses();
 
   return new Promise((resolve, reject) => {
@@ -1018,13 +1026,13 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
 
     sshClient.on('ready', async () => {
       console.log('SSH connection established successfully.');
-      
+
       try {
         // 1. Perform bootstrapping remotely
         console.log('Bootstrapping uv remotely...');
         await execCommand(sshClient!, 'curl -LsSf https://astral.sh/uv/install.sh | sh');
         console.log('Remote uv installer bootstrapped.');
-        
+
         const setupCmd = `
           export PATH="$HOME/.local/bin:$PATH"
           uv python install
@@ -1058,10 +1066,10 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
         // 5. Compare MD5 sums prior to transfer
         const remoteWheelPath = `.zx/${wheelFilename}`;
         const checkRemotePath = `~/.zx/${wheelFilename}`;
-        
+
         const localMD5 = getLocalFileMD5(localWheel);
         console.log(`Local wheel MD5: ${localMD5}`);
-        
+
         const remoteMD5 = await getRemoteFileMD5(sshClient!, checkRemotePath);
         console.log(`Remote wheel MD5: ${remoteMD5}`);
 

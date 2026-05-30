@@ -12,9 +12,10 @@ interface DataGridProps {
   setRunning: (running: boolean) => void;
   activeProject: string;
   apiCall: (endpoint: string, method?: string, body?: any) => Promise<any>;
+  theme: 'dark' | 'light';
 }
 
-export default function DataGrid({ authToken, port, running, setRunning, activeProject, apiCall }: DataGridProps) {
+export default function DataGrid({ authToken, port, running, setRunning, activeProject, apiCall, theme }: DataGridProps) {
   const [data, setData] = useState<any[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [selectedRows, setSelectedRows] = useState<number[]>([]);
@@ -935,7 +936,7 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
               const rowId = contextMenu.rowId;
               setContextMenu(null);
               try {
-                const res = await window.zxAPI.runZmon(activeProject, rowId);
+                const res = await window.zxAPI.runZmon(activeProject, rowId, theme);
                 if (res.status === 'error') {
                   alert(`Failed to start zmon: ${res.message}`);
                 }

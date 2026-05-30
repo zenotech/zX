@@ -540,6 +540,7 @@ export default function App() {
                 setRunning={setRunning}
                 activeProject={activeProject}
                 apiCall={apiCall}
+                theme={theme}
               />
             </div>
           )}

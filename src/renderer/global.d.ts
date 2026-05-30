@@ -15,7 +15,7 @@ export interface IZxAPI {
   startLocalBackend: () => Promise<number>;
   openDirectoryDialog: () => Promise<string | null>;
   stopBackend: () => Promise<boolean>;
-  runZmon: (activeProject: string, rowId: number) => Promise<{ status: string, isRemote?: boolean, port?: number, message?: string }>;
+  runZmon: (activeProject: string, rowId: number, theme?: string) => Promise<{ status: string, isRemote?: boolean, port?: number, message?: string }>;
 }
 
 declare global {
