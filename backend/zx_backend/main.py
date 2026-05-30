@@ -522,6 +522,164 @@ async def load_hook_endpoint(name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# AI Hook Generation API
+class AIGeneratePayload(BaseModel):
+    hook_name: str
+    prompt: Optional[str] = None
+    code: str
+    mode: str  # 'generate' or 'autocomplete'
+    cursor_line: Optional[int] = None
+    cursor_column: Optional[int] = None
+
+@app.post("/api/hooks/ai/generate")
+def ai_generate_hook_endpoint(payload: AIGeneratePayload):
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+        
+    try:
+        state = load_state(active_project_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed loading state: {str(e)}")
+        
+    api_key = state.get("GEMINI_API_KEY")
+    if not api_key:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        
+    if not api_key:
+        raise HTTPException(
+            status_code=400, 
+            detail="GEMINI_API_KEY is not configured. Please specify it in the Shared State."
+        )
+
+    import urllib.request
+    import json
+    
+    if payload.mode == "autocomplete":
+        system_instruction = (
+            "You are an expert Python autocomplete assistant. Act as a strict Python developer and code assistant "
+            "for the zX parametric exploration framework.\n"
+            "Predict the logical continuation or completion of the Python code provided.\n"
+            "CRITICAL: Return ONLY raw, valid Python code that immediately follows the provided prefix. "
+            "Do NOT repeat the prefix code, and do NOT include any introductory or explanatory text. "
+            "Do NOT wrap the response in markdown code blocks (like ```python or ```). Start returning the completion immediately."
+        )
+        
+        lines = payload.code.splitlines()
+        prefix = payload.code
+        suffix = ""
+        
+        if payload.cursor_line is not None and payload.cursor_column is not None:
+            line_idx = payload.cursor_line - 1
+            col_idx = payload.cursor_column - 1
+            
+            if 0 <= line_idx < len(lines):
+                prefix_lines = lines[:line_idx]
+                curr_line = lines[line_idx]
+                
+                curr_prefix = curr_line[:col_idx]
+                curr_suffix = curr_line[col_idx:]
+                
+                prefix = "\n".join(prefix_lines + [curr_prefix])
+                suffix = "\n".join([curr_suffix] + lines[line_idx+1:])
+        
+        prompt = (
+            f"We are editing the Python hook file '{payload.hook_name}'.\n"
+            f"Here is the code prefix up to the cursor:\n"
+            f"---CODE_PREFIX---\n"
+            f"{prefix}\n"
+            f"---END_CODE_PREFIX---\n"
+        )
+        if suffix.strip():
+            prompt += (
+                f"Here is the code suffix after the cursor:\n"
+                f"---CODE_SUFFIX---\n"
+                f"{suffix}\n"
+                f"---END_CODE_SUFFIX---\n"
+            )
+        prompt += (
+            "\nPlease generate the next few lines or logical completion of this code "
+            "starting exactly at the cursor position. Return ONLY the continuation code."
+        )
+    else:
+        system_instruction = (
+            "You are an expert Python developer and code assistant for the zX simulation exploration framework.\n"
+            "Generate clean, valid, and fully-formed Python code based on the user request.\n"
+            "CRITICAL: Return ONLY raw, valid Python code. Do NOT wrap the code in markdown code blocks "
+            "(like ```python or ```), and do NOT include any conversational filler, introductory, or explanatory text. "
+            "Return only the executable python code."
+        )
+        
+        prompt = (
+            f"We are working on the hook file '{payload.hook_name}'.\n"
+            f"Here is the current content of the file:\n"
+            f"---CURRENT_CODE---\n"
+            f"{payload.code}\n"
+            f"---END_CURRENT_CODE---\n\n"
+            f"The user has requested the following task:\n"
+            f"{payload.prompt}\n\n"
+            f"Please generate the complete code or the specific function modification to satisfy the user request. "
+            f"Return ONLY valid Python code."
+        )
+
+    # Use gemini-2.5-flash as the state-of-the-art developer model
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    api_payload = {
+        "contents": [
+            {
+                "role": "user",
+                "parts": [{"text": prompt}]
+            }
+        ],
+        "systemInstruction": {
+            "parts": [{"text": system_instruction}]
+        },
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": 1536
+        }
+    }
+    
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(api_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST"
+    )
+    
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            res_text = response.read().decode("utf-8")
+        res_data = json.loads(res_text)
+        
+        candidates = res_data.get("candidates", [])
+        generated_text = ""
+        if candidates:
+            parts = candidates[0].get("content", {}).get("parts", [])
+            if parts:
+                generated_text = parts[0].get("text", "")
+                
+        cleaned_text = generated_text.strip()
+        if cleaned_text.startswith("```python"):
+            cleaned_text = cleaned_text[len("```python"):].strip()
+        elif cleaned_text.startswith("```"):
+            cleaned_text = cleaned_text[3:].strip()
+        if cleaned_text.endswith("```"):
+            cleaned_text = cleaned_text[:-3].strip()
+            
+        return {"status": "success", "generated_code": cleaned_text}
+        
+    except Exception as e:
+        logger.error(f"Gemini API call failed: {e}")
+        err_msg = str(e)
+        if hasattr(e, "read"):
+            try:
+                err_body = e.read().decode("utf-8")
+                err_json = json.loads(err_body)
+                err_msg = err_json.get("error", {}).get("message", err_msg)
+            except Exception:
+                pass
+        raise HTTPException(status_code=500, detail=f"Gemini API Error: {err_msg}")
+
 # Runner Controllers
 class RunStartPayload(BaseModel):
     row_ids: List[int]
