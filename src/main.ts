@@ -6,6 +6,15 @@ import fs from 'fs';
 import { Client } from 'ssh2';
 import net from 'net';
 
+// Global exception and rejection handlers to prevent crash dialogs
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception in main process:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection in main process:', reason);
+});
+
 let mainWindow: BrowserWindow | null = null;
 let backendProcess: ChildProcess | null = null;
 let sshClient: Client | null = null;
@@ -1073,12 +1082,23 @@ function uploadDirectorySFTP(client: Client, localDir: string, remoteDir: string
 function createLocalForwardTunnel(client: Client, localPort: number, remotePort: number): Promise<net.Server> {
   return new Promise((resolve, reject) => {
     const server = net.createServer((socket) => {
+      socket.on('error', (err) => {
+        console.error('Tunnel local socket error:', err);
+        socket.destroy();
+      });
+
       client.forwardOut('127.0.0.1', socket.remotePort || 0, '127.0.0.1', remotePort, (err, stream) => {
         if (err) {
           console.error('forwardOut error:', err);
           socket.destroy();
           return;
         }
+
+        stream.on('error', (err: any) => {
+          console.error('Tunnel SSH stream error:', err);
+          stream.destroy();
+        });
+
         socket.pipe(stream).pipe(socket);
       });
     });
