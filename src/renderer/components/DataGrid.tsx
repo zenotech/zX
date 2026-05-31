@@ -402,6 +402,11 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
   const handleCellClick = (rowIdx: number, colKey: string, val: any) => {
     if (running) return; // Locked during run
     if (colKey.startsWith('_zx_')) return; // Can't edit system columns
+    
+    // Lock edits for completed rows
+    const row = data[rowIdx];
+    if (row && row._zx_status === 'completed') return;
+
     setEditingCell({ rowIdx, colKey });
     setEditValue(val !== null && val !== undefined ? String(val) : '');
   };
@@ -766,7 +771,7 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
                               fontFamily: isSystem ? 'var(--font-sans)' : 'var(--font-mono)',
                               color: isSystem ? 'var(--text-secondary)' : 'var(--text-primary)',
                               borderRight: '1px solid var(--border-color)',
-                              cursor: (running || isSystem) ? 'default' : 'double-click'
+                              cursor: (running || isSystem || status === 'completed') ? 'default' : 'double-click'
                             }}
                           >
                             {isEditing ? (
