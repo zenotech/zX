@@ -12,5 +12,6 @@
     "nprocs_half": 2,
     "slurm_args_half": "-p batch --gres=gpu:2 -t 80:0 -J EVE",
     "nprocs_full": 8,
-    "slurm_args_full": "-p batch --gres=gpu:4 -t 80:0 -J EVE"
+    "slurm_args_full": "-p batch --gres=gpu:4 -t 80:0 -J EVE",
+    "zmon_install": "/apps/zenotech/zmon"
 }

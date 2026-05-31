@@ -76,9 +76,17 @@ export default function HookEditor({ activeProject, apiCall, theme }: HookEditor
     if (!inputKey.trim()) return;
     try {
       setAiLoading(true);
-      const res = await apiCall('/api/state/update', 'POST', {
-        updates: { GEMINI_API_KEY: inputKey.trim() }
-      });
+      // Fetch latest state to avoid replacing other custom variables
+      const currentState = await apiCall('/api/state');
+      const updates = {
+        ...currentState,
+        GEMINI_API_KEY: inputKey.trim()
+      };
+      // Remove system properties from updates before posting (mirroring database.py)
+      delete updates.workspace_dir;
+      delete updates.current_iteration;
+
+      const res = await apiCall('/api/state/update', 'POST', { updates });
       if (res.status === 'success') {
         setApiKey(inputKey.trim());
         setShowKeyConfig(false);
@@ -98,9 +106,14 @@ export default function HookEditor({ activeProject, apiCall, theme }: HookEditor
     if (!window.confirm("Remove Gemini API Key from project state?")) return;
     try {
       setAiLoading(true);
-      const res = await apiCall('/api/state/update', 'POST', {
-        updates: { GEMINI_API_KEY: '' }
-      });
+      // Fetch latest state and remove GEMINI_API_KEY
+      const currentState = await apiCall('/api/state');
+      const updates = { ...currentState };
+      delete updates.GEMINI_API_KEY;
+      delete updates.workspace_dir;
+      delete updates.current_iteration;
+
+      const res = await apiCall('/api/state/update', 'POST', { updates });
       if (res.status === 'success') {
         setApiKey('');
         setInputKey('');

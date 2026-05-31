@@ -560,6 +560,13 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number, theme
       }
       console.log(`Remote free port discovered for zmon: ${remotePort}`);
 
+      // Pre-flight check: Verify zmon exists and is executable on remote host
+      try {
+        await execCommand(sshClient, `command -v "${remoteZmonCommand}" || which "${remoteZmonCommand}"`);
+      } catch (err) {
+        throw new Error(`The remote zmon executable "${remoteZmonCommand}" was not found or is not executable.\n\nPlease check the "zmon_install" path configured in your project's zx_state.json.`);
+      }
+
       // B. Start zmon remotely in background
       const remoteRunDir = `${activeProject}/runs/run_${rowId}`;
       const startCmd = `
@@ -570,17 +577,17 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number, theme
         nohup ${remoteZmonCommand} --port ${remotePort} > ~/.zx/zmon.log 2>&1 &
         echo $! > ~/.zx/zmon_${remotePort}.pid
         
-        # Wait up to 5s for the zmon port to bind and become active
+        # Wait up to 10s for the zmon port to bind and become active
         i=0
-        while [ $i -lt 5 ]; do
+        while [ $i -lt 20 ]; do
           if python3 -c "import socket; s=socket.socket(); s.connect(('127.0.0.1', ${remotePort}))" 2>/dev/null; then
             exit 0
           fi
           sleep 0.5
           i=$((i+1))
         done
-        echo "Warning: remote zmon didn't bind port in time, proceeding anyway"
-        exit 0
+        echo "Error: Remote zmon failed to bind on port ${remotePort} within 10 seconds" >&2
+        exit 1
       `;
 
       try {
@@ -588,7 +595,14 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number, theme
         console.log(`Remote zmon started on remote port ${remotePort}`);
       } catch (err: any) {
         console.error('Remote zmon start command failed:', err);
-        throw new Error(`Failed to start zmon remotely: ${err.message || err}`);
+        let logTail = '';
+        try {
+          logTail = await execCommand(sshClient, 'tail -n 15 ~/.zx/zmon.log 2>/dev/null');
+        } catch (tailErr) {
+          console.log('Failed to fetch remote zmon log tail:', tailErr);
+        }
+        const logMsg = logTail.trim() ? `\n\nRemote log output:\n${logTail.trim()}` : '';
+        throw new Error(`Failed to start zmon remotely: ${err.message || err}${logMsg}`);
       }
 
       activeZmonRemotePort = remotePort;
@@ -666,6 +680,27 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number, theme
         PORT: String(localPort)
       };
 
+      // Pre-flight check: Verify local zmon exists and is executable
+      let exists = true;
+      if (localZmonCommand.includes('/') || localZmonCommand.includes('\\')) {
+        exists = fs.existsSync(localZmonCommand);
+      } else {
+        try {
+          const checkCmd = process.platform === 'win32' ? `where "${localZmonCommand}"` : `which "${localZmonCommand}"`;
+          await new Promise((resolve, reject) => {
+            exec(checkCmd, { env }, (err) => {
+              if (err) reject(err);
+              else resolve(true);
+            });
+          });
+        } catch (e) {
+          exists = false;
+        }
+      }
+      if (!exists) {
+        throw new Error(`The local zmon executable "${localZmonCommand}" was not found.\n\nPlease configure the correct path in zx_state.json under "zmon_install" or ensure zmon is installed in your PATH.`);
+      }
+
       const localRunDir = path.join(activeProject, 'runs', `run_${rowId}`);
       try {
         if (!fs.existsSync(localRunDir)) {
@@ -682,20 +717,63 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number, theme
         env
       });
 
+      let localStdout = '';
+      let localStderr = '';
+
       zmonLocalProcess.on('error', (err) => {
         console.error('Failed to start local zmon process:', err);
+        localStderr += `Failed to start local zmon process: ${err.message}\n`;
       });
 
       zmonLocalProcess.stdout?.on('data', (data) => {
-        console.log(`[zmon stdout]: ${data}`);
+        const str = data.toString();
+        console.log(`[zmon stdout]: ${str}`);
+        localStdout += str;
+        if (localStdout.length > 2000) {
+          localStdout = localStdout.slice(-2000);
+        }
       });
 
       zmonLocalProcess.stderr?.on('data', (data) => {
-        console.error(`[zmon stderr]: ${data}`);
+        const str = data.toString();
+        console.error(`[zmon stderr]: ${str}`);
+        localStderr += str;
+        if (localStderr.length > 2000) {
+          localStderr = localStderr.slice(-2000);
+        }
       });
 
-      // Wait a short duration (1s) to allow it to initialize
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Wait up to 5s for the local port to bind and become active
+      const startTime = Date.now();
+      const timeoutMs = 5000;
+      let portBound = false;
+      
+      while (Date.now() - startTime < timeoutMs) {
+        const ready = await new Promise<boolean>((resolve) => {
+          const socket = net.connect(localPort, '127.0.0.1', () => {
+            socket.end();
+            resolve(true);
+          });
+          socket.on('error', () => {
+            resolve(false);
+          });
+        });
+        if (ready) {
+          portBound = true;
+          break;
+        }
+        if (zmonLocalProcess && zmonLocalProcess.exitCode !== null) {
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+
+      if (!portBound) {
+        const logs = (localStderr.trim() || localStdout.trim()) 
+          ? `\n\nProcess output:\n${(localStderr || localStdout).trim()}`
+          : '';
+        throw new Error(`Local zmon failed to start or bind to port ${localPort} within 5 seconds.${logs}`);
+      }
 
       // C. Start web browser to connect to localPort
       let url = `http://127.0.0.1:${localPort}`;
@@ -710,6 +788,7 @@ ipcMain.handle('run-zmon', async (_, activeProject: string, rowId: number, theme
     }
   } catch (err: any) {
     console.error('Failed to run zmon:', err);
+    dialog.showErrorBox('zMon Launch Failed', err.message || String(err));
     return { status: 'error', message: err.message || String(err) };
   }
 });
