@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Play, Square, Plus, Trash2, ShieldAlert, FileInput, 
+  Play, Square, Plus, Trash2, Copy, ShieldAlert, FileInput, 
   RefreshCw, CheckSquare, SquareCheck, RefreshCwOff, ShieldCheck, HelpCircle,
   Monitor
 } from 'lucide-react';
@@ -468,6 +468,43 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
     }
   };
 
+  const handleCopy = () => {
+    if (running || selectedRows.length === 0) return;
+
+    // Find the rows that are selected
+    const selectedData = data.filter(r => selectedRows.includes(r._zx_row_id));
+
+    // Get the starting nextId
+    let nextId = data.length > 0 ? Math.max(...data.map(r => r._zx_row_id)) + 1 : 0;
+
+    // Create copies of the selected rows
+    const copies = selectedData.map(row => {
+      const newRow: any = { ...row };
+      newRow._zx_row_id = nextId++;
+      newRow._zx_status = 'pending';
+      
+      // Reset system fields except ID and status
+      Object.keys(newRow).forEach(col => {
+        if (col.startsWith('_zx_')) {
+          if (col === '_zx_row_id') {
+            newRow[col] = newRow._zx_row_id;
+          } else if (col === '_zx_status') {
+            newRow[col] = 'pending';
+          } else if (col === '_zx_iteration') {
+            newRow[col] = 0;
+          } else {
+            newRow[col] = '';
+          }
+        }
+      });
+      return newRow;
+    });
+
+    const updated = [...data, ...copies];
+    saveChanges(updated);
+    setSelectedRows([]);
+  };
+
   const handleCheckboxToggle = (rowId: number, e: React.MouseEvent) => {
     if (e.shiftKey && selectedRows.length > 0) {
       // Range selection
@@ -597,6 +634,16 @@ export default function DataGrid({ authToken, port, running, setRunning, activeP
           >
             <Trash2 size={14} /> 
             Delete
+          </button>
+
+          <button 
+            onClick={handleCopy}
+            className="btn btn-sm btn-outline-secondary d-flex align-items-center gap-1" 
+            disabled={running || selectedRows.length === 0}
+            title="Copy selected rows to end of database"
+          >
+            <Copy size={14} /> 
+            Copy
           </button>
 
           <div style={{ height: '20px', width: '1px', background: 'var(--border-color)', margin: '0 4px' }} />
