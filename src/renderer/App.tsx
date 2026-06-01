@@ -3,7 +3,7 @@ import {
   Compass, Database, FileCode2, LineChart, 
   Terminal, FolderOpen, Settings, AlertTriangle, CheckCircle, 
   Activity, Server, FolderSync, Plus, ArrowRight, Sun, Moon,
-  Folder, ArrowUp, ChevronRight, Home, Search
+  Folder, ArrowUp, ChevronRight, Home, Search, History
 } from 'lucide-react';
 
 import DataGrid from './components/DataGrid';
@@ -13,6 +13,7 @@ import TerminalPanel from './components/TerminalPanel';
 import FileExplorer from './components/FileExplorer';
 import SharedStatePanel from './components/SharedStatePanel';
 import TutorialOverlay from './components/TutorialOverlay';
+import BackupPanel from './components/BackupPanel';
 
 interface RecentProject {
   path: string;
@@ -48,7 +49,7 @@ export default function App() {
   const [showTour, setShowTour] = useState<boolean>(false);
   const [tourPrompted, setTourPrompted] = useState<boolean>(false);
   
-  const [activeView, setActiveView] = useState<'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state'>('grid');
+  const [activeView, setActiveView] = useState<'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state' | 'backup'>('grid');
   const [running, setRunning] = useState<boolean>(false);
   const [hookStage, setHookStage] = useState<string>('');
   
@@ -555,6 +556,14 @@ export default function App() {
               <FolderSync size={16} />
               File Explorer
             </button>
+            <button 
+              id="nav-btn-backup"
+              onClick={() => setActiveView('backup')}
+              className={`btn w-100 justify-content-start text-start d-flex align-items-center gap-2 mb-1 border-0 ${activeView === 'backup' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
+            >
+              <History size={16} />
+              Workspace Backup
+            </button>
           </div>
           
           {running && (
@@ -626,6 +635,15 @@ export default function App() {
               <SharedStatePanel 
                 activeProject={activeProject}
                 apiCall={apiCall}
+              />
+            </div>
+          )}
+          {activeView === 'backup' && (
+            <div style={{ padding: '0', flexGrow: 1, height: '100%', overflow: 'hidden' }}>
+              <BackupPanel 
+                activeProject={activeProject}
+                apiCall={apiCall}
+                theme={theme}
               />
             </div>
           )}

@@ -980,6 +980,288 @@ async def get_custom_visualizations():
         logger.error(f"Failed running plot hook: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- Git Backup APIs ---
+import subprocess
+
+class GitCommitPayload(BaseModel):
+    files: List[str]
+    message: str
+
+class GitRestorePayload(BaseModel):
+    commit_hash: str
+
+def check_git_init(project_path: str) -> bool:
+    git_dir = os.path.join(project_path, ".git")
+    return os.path.exists(git_dir) and os.path.isdir(git_dir)
+
+def setup_local_git_config(project_path: str):
+    # Configure user name and email locally so commits do not fail if git isn't configured globally
+    subprocess.run(["git", "config", "local", "user.name", "zX Backup Service"], cwd=project_path, capture_output=True)
+    subprocess.run(["git", "config", "local", "user.email", "backup@zx.internal"], cwd=project_path, capture_output=True)
+
+@app.get("/api/git/status")
+async def git_status():
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    
+    initialized = check_git_init(active_project_path)
+    if not initialized:
+        return {"initialized": False, "files": [], "has_gitignore": False}
+    
+    # Check if .gitignore exists
+    gitignore_path = os.path.join(active_project_path, ".gitignore")
+    has_gitignore = os.path.exists(gitignore_path)
+    
+    # Run git status --porcelain
+    try:
+        # Also ensure local config is done
+        setup_local_git_config(active_project_path)
+        
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=active_project_path,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        files = []
+        for line in result.stdout.splitlines():
+            if len(line) < 4:
+                continue
+            status_code = line[:2].strip()
+            filepath = line[3:]
+            # Clean quotes if any (git porcelain might quote filenames with special characters)
+            if filepath.startswith('"') and filepath.endswith('"'):
+                filepath = filepath[1:-1]
+            files.append({
+                "path": filepath,
+                "status": status_code
+            })
+            
+        return {
+            "initialized": True,
+            "files": files,
+            "has_gitignore": has_gitignore
+        }
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git status error: {e.stderr or e.stdout}")
+        raise HTTPException(status_code=500, detail=f"Git status error: {e.stderr or str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/git/init")
+async def git_init():
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    
+    try:
+        # Run git init
+        subprocess.run(
+            ["git", "init"],
+            cwd=active_project_path,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        # Configure local git user info
+        setup_local_git_config(active_project_path)
+        
+        # Write default .gitignore if it doesn't exist
+        gitignore_path = os.path.join(active_project_path, ".gitignore")
+        if not os.path.exists(gitignore_path):
+            default_content = (
+                "# zX Simulation Workspace Gitignore\n"
+                "# Ignore heavy simulation runs data\n"
+                "runs/\n"
+                "\n"
+                "# Ignore virtual environments\n"
+                ".venv/\n"
+                "venv/\n"
+                "env/\n"
+                "\n"
+                "# Ignore OS files\n"
+                ".DS_Store\n"
+                "Thumbs.db\n"
+                "\n"
+                "# Ignore Python caches and build files\n"
+                "__pycache__/\n"
+                "*.pyc\n"
+                "*.pyo\n"
+                "*.pyd\n"
+                ".pytest_cache/\n"
+                "*.egg-info/\n"
+                "dist/\n"
+                "build/\n"
+                "\n"
+                "# Ignore frontend dependencies\n"
+                "node_modules/\n"
+                "\n"
+                "# Ignore local logs and locks\n"
+                "*.log\n"
+                "*.lock\n"
+            )
+            with open(gitignore_path, "w", encoding="utf-8") as f:
+                f.write(default_content)
+                
+        # Stage .gitignore and other files (like db, state, hooks) for initial commit if any exist
+        subprocess.run(["git", "add", ".gitignore"], cwd=active_project_path, capture_output=True)
+        
+        # Initial commit
+        subprocess.run(
+            ["git", "commit", "-m", "Initial backup setup"],
+            cwd=active_project_path,
+            capture_output=True,
+            text=True
+        )
+        
+        return {"status": "success", "message": "Git workspace backup initialized successfully"}
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git init error: {e.stderr or e.stdout}")
+        raise HTTPException(status_code=500, detail=f"Git init error: {e.stderr or str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/git/gitignore")
+async def git_get_gitignore():
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    
+    gitignore_path = os.path.join(active_project_path, ".gitignore")
+    if not os.path.exists(gitignore_path):
+        return {"content": ""}
+        
+    try:
+        with open(gitignore_path, "r", encoding="utf-8") as f:
+            content = f.read()
+        return {"content": content}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class GitignorePayload(BaseModel):
+    content: str
+
+@app.post("/api/git/gitignore")
+async def git_save_gitignore(payload: GitignorePayload):
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    
+    gitignore_path = os.path.join(active_project_path, ".gitignore")
+    try:
+        with open(gitignore_path, "w", encoding="utf-8") as f:
+            f.write(payload.content)
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/git/commit")
+async def git_commit(payload: GitCommitPayload):
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    
+    if not check_git_init(active_project_path):
+        raise HTTPException(status_code=400, detail="Git is not initialized in this project")
+        
+    if not payload.files:
+        raise HTTPException(status_code=400, detail="No files selected for backup")
+        
+    if not payload.message.strip():
+        raise HTTPException(status_code=400, detail="Backup description cannot be empty")
+        
+    try:
+        # Ensure config is set
+        setup_local_git_config(active_project_path)
+        
+        # Stage chosen files
+        for filepath in payload.files:
+            subprocess.run(
+                ["git", "add", filepath],
+                cwd=active_project_path,
+                capture_output=True,
+                text=True,
+                check=True
+            )
+        
+        # Commit changes
+        result = subprocess.run(
+            ["git", "commit", "-m", payload.message],
+            cwd=active_project_path,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        return {"status": "success", "output": result.stdout}
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git commit error: {e.stderr or e.stdout}")
+        raise HTTPException(status_code=500, detail=f"Git commit error: {e.stderr or str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/git/log")
+async def git_log():
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    
+    if not check_git_init(active_project_path):
+        return {"backups": []}
+        
+    try:
+        # Format git log output as: hash|date|description
+        result = subprocess.run(
+            ["git", "log", "--pretty=format:%H|%ad|%s", "--date=iso"],
+            cwd=active_project_path,
+            capture_output=True,
+            text=True
+        )
+        
+        backups = []
+        if result.stdout.strip():
+            for line in result.stdout.splitlines():
+                parts = line.split("|", 2)
+                if len(parts) == 3:
+                    backups.append({
+                        "hash": parts[0],
+                        "date": parts[1],
+                        "description": parts[2]
+                    })
+        return {"backups": backups}
+    except Exception as e:
+        logger.error(f"Git log error: {str(e)}")
+        return {"backups": []}
+
+@app.post("/api/git/restore")
+async def git_restore(payload: GitRestorePayload):
+    if not active_project_path:
+        raise HTTPException(status_code=400, detail="No active project opened")
+    
+    if not check_git_init(active_project_path):
+        raise HTTPException(status_code=400, detail="Git is not initialized in this project")
+        
+    if not payload.commit_hash.strip():
+        raise HTTPException(status_code=400, detail="Commit hash cannot be empty")
+        
+    try:
+        # Revert changes using git reset --hard
+        subprocess.run(
+            ["git", "reset", "--hard", payload.commit_hash],
+            cwd=active_project_path,
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        
+        # After reset, we must reload/reinitialize database files
+        initialize_project_database(active_project_path, run_init=False)
+        
+        return {"status": "success", "message": f"Successfully restored workspace to backup {payload.commit_hash[:8]}"}
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git restore error: {e.stderr or e.stdout}")
+        raise HTTPException(status_code=500, detail=f"Git restore error: {e.stderr or str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- WebSocket Terminal Endpoint ---
 @app.websocket("/ws/terminal")
 async def websocket_terminal(websocket: WebSocket, token: str = Query(...)):

@@ -8,12 +8,12 @@ interface TourStep {
   title: string;
   content: string | React.ReactNode;
   selector: string | null;
-  view?: 'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state';
+  view?: 'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state' | 'backup';
 }
 
 interface TutorialOverlayProps {
-  activeView: 'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state';
-  setActiveView: (view: 'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state') => void;
+  activeView: 'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state' | 'backup';
+  setActiveView: (view: 'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state' | 'backup') => void;
   activeProject: string;
   theme: 'light' | 'dark';
   onClose: () => void;
