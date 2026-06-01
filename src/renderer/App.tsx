@@ -12,6 +12,7 @@ import VisualizationDashboard from './components/VisualizationDashboard';
 import TerminalPanel from './components/TerminalPanel';
 import FileExplorer from './components/FileExplorer';
 import SharedStatePanel from './components/SharedStatePanel';
+import TutorialOverlay from './components/TutorialOverlay';
 
 interface RecentProject {
   path: string;
@@ -42,6 +43,10 @@ export default function App() {
   const [activeProject, setActiveProject] = useState<string>('');
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [isEstablishingConnection, setIsEstablishingConnection] = useState<boolean>(true);
+  
+  // Tour overlay state
+  const [showTour, setShowTour] = useState<boolean>(false);
+  const [tourPrompted, setTourPrompted] = useState<boolean>(false);
   
   const [activeView, setActiveView] = useState<'grid' | 'editor' | 'dashboard' | 'terminal' | 'explorer' | 'state'>('grid');
   const [running, setRunning] = useState<boolean>(false);
@@ -97,6 +102,14 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('theme', theme);
   }, [theme]);
+
+  // Trigger tour automatically once activeProject is set for the first time
+  useEffect(() => {
+    if (activeProject && localStorage.getItem('zx-tour-completed') !== 'true' && !tourPrompted) {
+      setShowTour(true);
+      setTourPrompted(true);
+    }
+  }, [activeProject, tourPrompted]);
 
   // Initialize from Electron IPC
   useEffect(() => {
@@ -444,9 +457,28 @@ export default function App() {
           </span>
         </div>
 
-        {/* Theme Toggle Button */}
-        <div style={{ display: 'flex', alignItems: 'center', paddingRight: '4px' }}>
+        {/* Theme Toggle & Help Tour Buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingRight: '4px' }}>
+          {/* Help Tour Button */}
           <button
+            onClick={() => setShowTour(true)}
+            className="btn btn-sm d-flex align-items-center gap-1 border-secondary"
+            style={{
+              fontSize: '12px',
+              height: '28px',
+              padding: '0 10px',
+              background: 'rgba(255,255,255,0.02)',
+              cursor: 'pointer',
+              color: 'var(--text-secondary)'
+            }}
+            title="Launch Interactive Tutorial Walkthrough"
+          >
+            <Compass size={13} style={{ color: 'var(--accent-cyan)' }} />
+            <span>Tour</span>
+          </button>
+
+          <button
+            id="theme-toggle-btn"
             onClick={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
             className="btn btn-sm p-0 d-flex align-items-center justify-content-center"
             title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
@@ -473,9 +505,10 @@ export default function App() {
       {/* MAIN VIEW CONTENT */}
       <main className="layout-main">
         {/* SIDEBAR NAVIGATION */}
-        <aside className="layout-sidebar">
+        <aside className="layout-sidebar" id="layout-sidebar">
           <div style={{ padding: '16px 12px', flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <button 
+              id="nav-btn-grid"
               onClick={() => setActiveView('grid')}
               className={`btn w-100 justify-content-start text-start d-flex align-items-center gap-2 mb-1 border-0 ${activeView === 'grid' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
             >
@@ -483,6 +516,7 @@ export default function App() {
               Parameter Grid
             </button>
             <button 
+              id="nav-btn-editor"
               onClick={() => setActiveView('editor')}
               className={`btn w-100 justify-content-start text-start d-flex align-items-center gap-2 mb-1 border-0 ${activeView === 'editor' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
             >
@@ -490,6 +524,7 @@ export default function App() {
               Python Hooks
             </button>
             <button 
+              id="nav-btn-state"
               onClick={() => setActiveView('state')}
               className={`btn w-100 justify-content-start text-start d-flex align-items-center gap-2 mb-1 border-0 ${activeView === 'state' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
             >
@@ -497,6 +532,7 @@ export default function App() {
               Shared State
             </button>
             <button 
+              id="nav-btn-dashboard"
               onClick={() => setActiveView('dashboard')}
               className={`btn w-100 justify-content-start text-start d-flex align-items-center gap-2 mb-1 border-0 ${activeView === 'dashboard' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
             >
@@ -504,6 +540,7 @@ export default function App() {
               Visualization
             </button>
             <button 
+              id="nav-btn-terminal"
               onClick={() => setActiveView('terminal')}
               className={`btn w-100 justify-content-start text-start d-flex align-items-center gap-2 mb-1 border-0 ${activeView === 'terminal' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
             >
@@ -511,6 +548,7 @@ export default function App() {
               Split Terminal
             </button>
             <button 
+              id="nav-btn-explorer"
               onClick={() => setActiveView('explorer')}
               className={`btn w-100 justify-content-start text-start d-flex align-items-center gap-2 mb-1 border-0 ${activeView === 'explorer' ? 'btn-primary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
             >
@@ -530,7 +568,7 @@ export default function App() {
         </aside>
 
         {/* CONTENT WIDGETS */}
-        <section className="layout-content">
+        <section className="layout-content" id="layout-content">
           {activeView === 'grid' && (
             <div style={{ padding: '24px', flexGrow: 1, height: '100%', overflow: 'hidden' }}>
               <DataGrid 
@@ -595,7 +633,7 @@ export default function App() {
       </main>
 
       {/* STATUSBAR */}
-      <footer className="layout-statusbar">
+      <footer className="layout-statusbar" id="layout-statusbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Server size={12} style={{ color: connectionStatus === 'connected' ? 'var(--status-completed)' : 'var(--status-failed)' }} />
@@ -795,6 +833,24 @@ export default function App() {
                 {/* TEMPLATE PROJECT cards gallery */}
                 {connectionStatus === 'connected' && templates.length > 0 && (
                   <div style={{ marginTop: '20px' }}>
+                    {/* Tour Guidance Banner */}
+                    {localStorage.getItem('zx-tour-completed') !== 'true' && (
+                      <div 
+                        className="alert alert-info py-2 px-3 mb-3 d-flex align-items-center gap-2" 
+                        style={{ 
+                          background: 'rgba(212, 137, 14, 0.08)', 
+                          border: '1px dashed var(--accent-cyan)',
+                          color: 'var(--text-primary)',
+                          borderRadius: '8px'
+                        }}
+                      >
+                        <Compass size={16} style={{ color: 'var(--accent-cyan)', flexShrink: 0 }} className="animate-pulse" />
+                        <span style={{ fontSize: '11px', lineHeight: '1.4' }}>
+                          <strong>New to zX?</strong> Select the <strong>Six-Hump Camel Optimization</strong> template below, enter a folder path (e.g. <code>~/my-zx-exploration</code>), and click <strong>Open</strong> to start the interactive tour!
+                        </span>
+                      </div>
+                    )}
+
                     <label className="form-label text-secondary mb-2" style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em' }}>
                       TEMPLATE PROJECT (OPTIONAL)
                     </label>
@@ -1121,6 +1177,16 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+
+      {showTour && (
+        <TutorialOverlay
+          activeView={activeView}
+          setActiveView={setActiveView}
+          activeProject={activeProject}
+          theme={theme}
+          onClose={() => setShowTour(false)}
+        />
       )}
     </div>
   );
