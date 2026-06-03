@@ -1179,12 +1179,62 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
           await uploadFileSFTP(sshClient!, localWheel, remoteWheelPath);
         }
 
-        // Upload projects templates directory recursively
+        // Upload projects templates directory recursively as a zipped archive for speed,
+        // with a fallback to standard recursive SFTP upload if compression/extraction fails.
         const localProjectsDir = resolveLocalProjectsDir();
         const remoteProjectsDir = '.zx/projects';
         console.log(`Uploading projects directory from ${localProjectsDir} to remote ${remoteProjectsDir}...`);
-        await uploadDirectorySFTP(sshClient!, localProjectsDir, remoteProjectsDir);
-        console.log('Projects directory uploaded successfully.');
+
+        let archiveUploaded = false;
+        const tempArchivePath = path.join(app.getPath('temp'), `projects_${Date.now()}.tar.gz`);
+        const parentDir = path.dirname(localProjectsDir);
+        const folderName = path.basename(localProjectsDir);
+
+        try {
+          console.log(`Attempting to compress templates to ${tempArchivePath}...`);
+          await new Promise<void>((resolveTar, rejectTar) => {
+            exec(`tar -czf "${tempArchivePath}" -C "${parentDir}" "${folderName}"`, (err, stdout, stderr) => {
+              if (err) {
+                rejectTar(new Error(stderr || err.message));
+              } else {
+                resolveTar();
+              }
+            });
+          });
+
+          console.log('Archive created successfully. Uploading archive to remote...');
+          const remoteArchiveFilename = `projects_${Date.now()}.tar.gz`;
+          const remoteArchivePath = `.zx/${remoteArchiveFilename}`;
+          await uploadFileSFTP(sshClient!, tempArchivePath, remoteArchivePath);
+
+          console.log('Archive uploaded. Extracting archive on remote...');
+          const extractCmd = `
+            mkdir -p ~/.zx
+            tar -xzf ~/.zx/${remoteArchiveFilename} -C ~/.zx/
+            rm -f ~/.zx/${remoteArchiveFilename}
+          `;
+          await execCommand(sshClient!, extractCmd);
+          console.log('Archive extracted successfully on remote.');
+          archiveUploaded = true;
+        } catch (archiveErr) {
+          console.warn('Failed to upload zipped projects archive, falling back to recursive SFTP upload:', archiveErr);
+        } finally {
+          // Clean up local temp archive file if it was created
+          if (fs.existsSync(tempArchivePath)) {
+            try {
+              fs.unlinkSync(tempArchivePath);
+            } catch (unlinkErr) {
+              console.error('Failed to clean up local temp archive:', unlinkErr);
+            }
+          }
+        }
+
+        if (!archiveUploaded) {
+          console.log('Falling back: uploading projects directory via recursive SFTP...');
+          await uploadDirectorySFTP(sshClient!, localProjectsDir, remoteProjectsDir);
+        } else {
+          console.log('Projects directory uploaded and extracted via zip archive successfully.');
+        }
 
         // 6. Install the wheel on the remote system
         console.log('Installing package wheel on remote...');
