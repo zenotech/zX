@@ -1,0 +1,10 @@
+{
+    "max_iterations": 0,
+    "current_iteration": 0,
+    "use_slurm": false,
+    "slurm_poll_interval": 30,
+    "solver": "icoFoam",
+    "openfoam_install": "/usr/bin",
+    "use_mock": true,
+    "mesh_resolution": 20
+}

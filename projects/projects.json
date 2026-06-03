@@ -13,5 +13,10 @@
     "id": "zdt1",
     "name": "Multi objective Optimisation",
     "description": "Multi-objective evolutionary optimization using the ZDT1 test function, mapping decision variables to multiple conflicting objectives."
+  },
+  {
+    "id": "openfoam",
+    "name": "OpenFOAM analysis",
+    "description": "CFD analysis using OpenFOAM (Lid-Driven Cavity flow)"
   }
 ]

@@ -1,0 +1,4 @@
+Lid Velocity [m/s],Viscosity [m2/s],Grid Resolution,Comment,_zx_row_id,_zx_status,_zx_hook_stage,_zx_run_dir,_zx_started_at,_zx_completed_at,_zx_error,_zx_iteration,_zx_job_id
+1.0,0.01,20,Coarse Cavity,0,pending,,,,,,0,
+1.0,0.01,40,Medium Cavity,1,pending,,,,,,0,
+2.0,0.01,40,High Re Cavity,2,pending,,,,,,0,
