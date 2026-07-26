@@ -8,10 +8,11 @@ export interface IZxAPI {
     lastConnection: string;
     windowWidth: number;
     windowHeight: number;
+    customSshHosts?: any[];
   }>;
   saveSettings: (settings: any) => Promise<boolean>;
   getSSHHosts: () => Promise<string[]>;
-  connectSSHRemote: (host: string) => Promise<{ status: string, host: string, port?: number }>;
+  connectSSHRemote: (host: string | any) => Promise<{ status: string, host: string, port?: number }>;
   startLocalBackend: () => Promise<number>;
   openDirectoryDialog: () => Promise<string | null>;
   stopBackend: () => Promise<boolean>;

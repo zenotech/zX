@@ -41,6 +41,12 @@ export default function App() {
   const [sshHosts, setSshHosts] = useState<string[]>([]);
   const [selectedHost, setSelectedHost] = useState<string>('');
   
+  const [sshMode, setSshMode] = useState<'config' | 'manual'>('config');
+  const [manualHost, setManualHost] = useState<string>('');
+  const [manualPort, setManualPort] = useState<string>('22');
+  const [manualUsername, setManualUsername] = useState<string>('');
+  const [manualKeyPath, setManualKeyPath] = useState<string>('');
+
   const [activeProject, setActiveProject] = useState<string>('');
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
   const [isEstablishingConnection, setIsEstablishingConnection] = useState<boolean>(true);
@@ -128,10 +134,19 @@ export default function App() {
           
           const lastConn = (settings.lastConnection as 'Local' | 'Remote') || 'Local';
           setConnectionType(lastConn);
-          setSshHosts(hosts);
-          if (hosts.length > 0) {
-            const firstHost = hosts[0];
+          
+          const customHosts = (settings.customSshHosts || []).map((c: any) => c.label || `${c.username}@${c.host}:${c.port}`);
+          const allHosts = Array.from(new Set([...hosts, ...customHosts]));
+          setSshHosts(allHosts);
+          if (allHosts.length > 0) {
+            const firstHost = allHosts[0];
             setSelectedHost(firstHost);
+            setSshMode('config');
+            if (lastConn === 'Remote') {
+              setConnectionStatus('disconnected');
+            }
+          } else {
+            setSshMode('manual');
             if (lastConn === 'Remote') {
               setConnectionStatus('disconnected');
             }
@@ -388,16 +403,27 @@ export default function App() {
     }
   }, [connectionStatus]);
 
-  const handleConnectSSH = async (host: string) => {
-    if (!window.zxAPI || !host) return;
+  const handleConnectSSH = async (hostInfo: any) => {
+    if (!window.zxAPI || !hostInfo) return;
     setConnectionStatus('connecting');
     setIsEstablishingConnection(true);
     try {
-      const res = await window.zxAPI.connectSSHRemote(host);
+      const res = await window.zxAPI.connectSSHRemote(hostInfo);
       if (res.status === 'success') {
-        console.log(`SSH Remote Connection success to ${host} on local forwarded port ${res.port}`);
+        const connectedHost = res.host || (typeof hostInfo === 'string' ? hostInfo : `${hostInfo.username || 'root'}@${hostInfo.host}:${hostInfo.port || 22}`);
+        console.log(`SSH Remote Connection success to ${connectedHost} on local forwarded port ${res.port}`);
         if (res.port) {
           setPort(res.port);
+        }
+        if (connectedHost) {
+          setSelectedHost(connectedHost);
+          
+          // Re-fetch hosts to include the newly added custom host in the select dropdown list
+          const hosts = await window.zxAPI.getSSHHosts();
+          const settings = await window.zxAPI.getSettings();
+          const customHosts = (settings.customSshHosts || []).map((c: any) => c.label || `${c.username}@${c.host}:${c.port}`);
+          const allHosts = Array.from(new Set([...hosts, ...customHosts]));
+          setSshHosts(allHosts);
         }
       } else {
         setConnectionStatus('error');
@@ -742,31 +768,123 @@ export default function App() {
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
-                  <div style={{ display: 'flex', gap: '8px', width: '100%', alignItems: 'center' }}>
-                    <select 
-                      value={selectedHost}
-                      onChange={(e) => {
-                        setSelectedHost(e.target.value);
-                        setConnectionStatus('disconnected');
-                      }}
-                      className="form-select form-select-sm"
-                      style={{ flex: 1, minWidth: 0, background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
+                  {/* SSH Mode Toggle */}
+                  <div className="d-flex gap-2 mb-1" style={{ background: 'var(--bg-primary)', borderRadius: '6px', padding: '2px', border: '1px solid var(--border-color)' }}>
+                    <button
+                      type="button"
+                      onClick={() => setSshMode('config')}
+                      className={`btn btn-sm flex-fill py-1 ${sshMode === 'config' ? 'btn-secondary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
+                      style={{ fontSize: '11px', borderRadius: '4px' }}
                     >
-                      {sshHosts.length === 0 ? (
-                        <option value="">No SSH Hosts found in ~/.ssh/config</option>
-                      ) : (
-                        sshHosts.map(h => <option key={h} value={h}>{h}</option>)
-                      )}
-                    </select>
-                    <button 
-                      onClick={() => handleConnectSSH(selectedHost)}
-                      disabled={!selectedHost || connectionStatus === 'connecting'}
-                      className="btn btn-sm btn-primary"
-                      style={{ whiteSpace: 'nowrap' }}
+                      Saved Hosts
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSshMode('manual')}
+                      className={`btn btn-sm flex-fill py-1 ${sshMode === 'manual' ? 'btn-secondary text-white shadow-sm' : 'btn-link text-secondary text-decoration-none'}`}
+                      style={{ fontSize: '11px', borderRadius: '4px' }}
                     >
-                      {connectionStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+                      Manual Entry
                     </button>
                   </div>
+
+                  {sshMode === 'config' ? (
+                    <div style={{ display: 'flex', gap: '8px', width: '100%', alignItems: 'center' }}>
+                      <select 
+                        value={selectedHost}
+                        onChange={(e) => {
+                          setSelectedHost(e.target.value);
+                          setConnectionStatus('disconnected');
+                        }}
+                        className="form-select form-select-sm"
+                        style={{ flex: 1, minWidth: 0, background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
+                      >
+                        {sshHosts.length === 0 ? (
+                          <option value="">No SSH Hosts found</option>
+                        ) : (
+                          <>
+                            <option value="">-- Select SSH Host --</option>
+                            {sshHosts.map(h => <option key={h} value={h}>{h}</option>)}
+                          </>
+                        )}
+                      </select>
+                      <button 
+                        onClick={() => handleConnectSSH(selectedHost)}
+                        disabled={!selectedHost || connectionStatus === 'connecting'}
+                        className="btn btn-sm btn-primary"
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        {connectionStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+                      <div className="d-flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Hostname or IP"
+                          value={manualHost}
+                          onChange={(e) => {
+                            setManualHost(e.target.value);
+                            setConnectionStatus('disconnected');
+                          }}
+                          className="form-control form-control-sm"
+                          style={{ flex: 2, background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Port (22)"
+                          value={manualPort}
+                          onChange={(e) => {
+                            setManualPort(e.target.value);
+                            setConnectionStatus('disconnected');
+                          }}
+                          className="form-control form-control-sm"
+                          style={{ flex: 1, background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
+                        />
+                      </div>
+                      <div className="d-flex gap-2">
+                        <input
+                          type="text"
+                          placeholder="Username (optional)"
+                          value={manualUsername}
+                          onChange={(e) => {
+                            setManualUsername(e.target.value);
+                            setConnectionStatus('disconnected');
+                          }}
+                          className="form-control form-control-sm"
+                          style={{ flex: 1, background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Private Key Path (optional)"
+                          value={manualKeyPath}
+                          onChange={(e) => {
+                            setManualKeyPath(e.target.value);
+                            setConnectionStatus('disconnected');
+                          }}
+                          className="form-control form-control-sm"
+                          style={{ flex: 1.5, background: 'var(--bg-primary)', border: '1px solid var(--border-color)' }}
+                        />
+                      </div>
+                      <button 
+                        onClick={() => {
+                          if (!manualHost) return;
+                          handleConnectSSH({
+                            host: manualHost,
+                            port: manualPort ? parseInt(manualPort, 10) : 22,
+                            username: manualUsername || undefined,
+                            privateKeyPath: manualKeyPath || undefined
+                          });
+                        }}
+                        disabled={!manualHost || connectionStatus === 'connecting'}
+                        className="btn btn-sm btn-primary w-100"
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        {connectionStatus === 'connecting' ? 'Connecting...' : 'Connect'}
+                      </button>
+                    </div>
+                  )}
 
                   {/* Remote Status Alert */}
                   {connectionStatus === 'connecting' && (

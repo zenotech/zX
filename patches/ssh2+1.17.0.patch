@@ -1,0 +1,27 @@
+diff --git a/node_modules/ssh2/lib/client.js b/node_modules/ssh2/lib/client.js
+index 7291c2c..8de704c 100644
+--- a/node_modules/ssh2/lib/client.js
++++ b/node_modules/ssh2/lib/client.js
+@@ -2154,6 +2154,22 @@ function hostKeysProve(client, keys_, cb) {
+ 
+ function getKeyAlgos(client, key, serverSigAlgs) {
+   switch (key.type) {
++    case 'ssh-rsa-cert-v01@openssh.com':
++      if (client._protocol._compatFlags & COMPAT.IMPLY_RSA_SHA2_SIGALGS) {
++        if (!Array.isArray(serverSigAlgs))
++          serverSigAlgs = ['rsa-sha2-256', 'rsa-sha2-512'];
++        else
++          serverSigAlgs = ['rsa-sha2-256', 'rsa-sha2-512', ...serverSigAlgs];
++      }
++      if (Array.isArray(serverSigAlgs)) {
++        if (serverSigAlgs.indexOf('rsa-sha2-256') !== -1)
++          return [['rsa-sha2-256-cert-v01@openssh.com', 'sha256']];
++        if (serverSigAlgs.indexOf('rsa-sha2-512') !== -1)
++          return [['rsa-sha2-512-cert-v01@openssh.com', 'sha512']];
++        if (serverSigAlgs.indexOf('ssh-rsa') === -1)
++          return [];
++      }
++      return [['ssh-rsa-cert-v01@openssh.com', 'sha1']];
+     case 'ssh-rsa':
+       if (client._protocol._compatFlags & COMPAT.IMPLY_RSA_SHA2_SIGALGS) {
+         if (!Array.isArray(serverSigAlgs))

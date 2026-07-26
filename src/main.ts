@@ -6,6 +6,171 @@ import fs from 'fs';
 import { Client } from 'ssh2';
 import net from 'net';
 
+// ssh2 has no support for OpenSSH certificate authentication. Two things are
+// needed to add it:
+//
+//  1. `getKeyAlgos()` in ssh2/lib/client.js must know how to pick a signature
+//     algorithm for `ssh-rsa-cert-v01@openssh.com` keys. That function is
+//     module-local and not exported, so it cannot be patched at runtime — it is
+//     patched at install time instead by patches/ssh2+1.17.0.patch (applied via
+//     the `postinstall` script). Do NOT patch it here: in a packaged build
+//     ssh2 lives inside a read-only app.asar and the write would fail silently.
+//  2. The in-memory patches below, which make the parsed key present itself as
+//     the certificate and fix up the USERAUTH_REQUEST packet layout.
+function verifySsh2CertPatch() {
+  try {
+    const content = fs.readFileSync(require.resolve('ssh2/lib/client.js'), 'utf8');
+    if (!content.includes('ssh-rsa-cert-v01@openssh.com')) {
+      console.warn(
+        'ssh2/lib/client.js is missing the certificate key-algo patch. ' +
+        'SSH certificate authentication will not work. ' +
+        'Run `npx patch-package` (or reinstall dependencies) to apply patches/ssh2+1.17.0.patch.'
+      );
+    }
+  } catch (err) {
+    console.error('Could not verify the ssh2 certificate patch:', err);
+  }
+}
+
+verifySsh2CertPatch();
+
+function applySSH2MonkeyPatches() {
+  try {
+    const keyParser = require('ssh2/lib/protocol/keyParser.js');
+    const Protocol = require('ssh2/lib/protocol/Protocol.js');
+    const utils = require('ssh2/lib/protocol/utils.js');
+    const { writeUInt32BE } = utils;
+
+    // 1. Monkey-patch keyParser.parseKey to auto-extract certificate from buffer.certificate
+    const originalParseKey = keyParser.parseKey;
+    keyParser.parseKey = function(data: any, passphrase: any) {
+      const key = originalParseKey(data, passphrase);
+      if (key && !(key instanceof Error) && data && data.certificate) {
+        const certStr = data.certificate.toString().trim();
+        const parts = certStr.split(/\s+/);
+        if (parts.length >= 2) {
+          const certBuffer = Buffer.from(parts[1], 'base64');
+          const certKey = originalParseKey(data.certificate);
+          if (certKey && !(certKey instanceof Error)) {
+            key.type = certKey.type; // e.g. 'ssh-rsa-cert-v01@openssh.com'
+            key.getPublicSSH = function() {
+              return certBuffer; // Return the binary certificate buffer
+            };
+          }
+        }
+      }
+      return key;
+    };
+
+    // 2. Monkey-patch Protocol.prototype.authPK to format signature block with base algorithm
+    const originalAuthPK = Protocol.prototype.authPK;
+    Protocol.prototype.authPK = function(username: any, pubKey: any, keyAlgo: any, cbSign: any) {
+      if (!cbSign) {
+        return originalAuthPK.call(this, username, pubKey, keyAlgo, cbSign);
+      }
+      
+      const parsedKey = keyParser.parseKey(pubKey);
+      if (parsedKey instanceof Error)
+        throw new Error('Invalid key');
+
+      const keyType = parsedKey.type;
+      pubKey = parsedKey.getPublicSSH();
+
+      if (!keyAlgo)
+        keyAlgo = keyType;
+
+      const userLen = Buffer.byteLength(username);
+      const algoLen = Buffer.byteLength(keyAlgo);
+      const pubKeyLen = pubKey.length;
+      const sessionID = this._kex.sessionID;
+      const sesLen = sessionID.length;
+      const payloadLen = 4 + sesLen + 1 + 4 + userLen + 4 + 14 + 4 + 9 + 1 + 4 + algoLen + 4 + pubKeyLen;
+
+      const packet = Buffer.allocUnsafe(payloadLen);
+      let p = 0;
+      writeUInt32BE(packet, sesLen, p);
+      packet.set(sessionID, p += 4);
+      p += sesLen;
+
+      packet[p] = 50; // MESSAGE.USERAUTH_REQUEST
+
+      writeUInt32BE(packet, userLen, ++p);
+      (packet as any).utf8Write(username, p += 4, userLen);
+
+      writeUInt32BE(packet, 14, p += userLen);
+      (packet as any).utf8Write('ssh-connection', p += 4, 14);
+
+      writeUInt32BE(packet, 9, p += 14);
+      (packet as any).utf8Write('publickey', p += 4, 9);
+
+      packet[p += 9] = 1; // cbSign is true, so 1
+
+      writeUInt32BE(packet, algoLen, ++p);
+      (packet as any).utf8Write(keyAlgo, p += 4, algoLen);
+
+      writeUInt32BE(packet, pubKeyLen, p += algoLen);
+      packet.set(pubKey, p += 4);
+
+      cbSign(packet, (signature: any) => {
+        signature = utils.convertSignature(signature, keyType);
+        if (signature === false)
+          throw new Error('Error while converting handshake signature');
+
+        // Strip -cert-v01@openssh.com suffix from algorithm name inside signature block
+        const sigAlgo = keyAlgo.endsWith('-cert-v01@openssh.com') ? keyAlgo.replace('-cert-v01@openssh.com', '') : keyAlgo;
+        const sigAlgoLen = Buffer.byteLength(sigAlgo);
+        const sigLen = signature.length;
+
+        const writeStart = this._packetRW.write.allocStart;
+        const finalPacket = this._packetRW.write.alloc(
+          1 + 4 + userLen + 4 + 14 + 4 + 9 + 1 + 4 + algoLen + 4 + pubKeyLen + 4
+            + 4 + sigAlgoLen + 4 + sigLen
+        );
+
+        let fp = writeStart;
+        finalPacket[fp] = 50; // MESSAGE.USERAUTH_REQUEST
+
+        writeUInt32BE(finalPacket, userLen, ++fp);
+        (finalPacket as any).utf8Write(username, fp += 4, userLen);
+
+        writeUInt32BE(finalPacket, 14, fp += userLen);
+        (finalPacket as any).utf8Write('ssh-connection', fp += 4, 14);
+
+        writeUInt32BE(finalPacket, 9, fp += 14);
+        (finalPacket as any).utf8Write('publickey', fp += 4, 9);
+
+        finalPacket[fp += 9] = 1;
+
+        writeUInt32BE(finalPacket, algoLen, ++fp);
+        (finalPacket as any).utf8Write(keyAlgo, fp += 4, algoLen);
+
+        writeUInt32BE(finalPacket, pubKeyLen, fp += algoLen);
+        finalPacket.set(pubKey, fp += 4);
+
+        writeUInt32BE(finalPacket, 4 + sigAlgoLen + 4 + sigLen, fp += pubKeyLen);
+
+        writeUInt32BE(finalPacket, sigAlgoLen, fp += 4);
+        (finalPacket as any).utf8Write(sigAlgo, fp += 4, sigAlgoLen);
+
+        writeUInt32BE(finalPacket, sigLen, fp += sigAlgoLen);
+        finalPacket.set(signature, fp += 4);
+
+        this._authsQueue.push('publickey');
+
+        this._debug && this._debug(
+          'Outbound: Sending USERAUTH_REQUEST (publickey) [patched]'
+        );
+        utils.sendPacket(this, this._packetRW.write.finalize(finalPacket));
+      });
+    };
+    console.log('Successfully applied SSH2 certificate authentication monkey patches!');
+  } catch (err) {
+    console.error('Failed to apply SSH2 monkey patches:', err);
+  }
+}
+
+applySSH2MonkeyPatches();
+
 // Global exception and rejection handlers to prevent crash dialogs
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception in main process:', error);
@@ -27,11 +192,20 @@ let zmonLocalProcess: ChildProcess | null = null;
 let zmonTunnelServer: net.Server | null = null;
 let activeZmonRemotePort: number | null = null;
 
+interface ManualSSHConfig {
+  host: string;
+  port?: number;
+  username?: string;
+  privateKeyPath?: string;
+  label?: string;
+}
+
 interface AppSettings {
   recentProjects: any[];
   lastConnection: string;
   windowWidth: number;
   windowHeight: number;
+  customSshHosts?: ManualSSHConfig[];
 }
 
 const settingsPath = path.join(app.getPath('userData'), 'zx_settings.json');
@@ -40,7 +214,11 @@ function loadSettings(): AppSettings {
   try {
     if (fs.existsSync(settingsPath)) {
       const data = fs.readFileSync(settingsPath, 'utf-8');
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (!parsed.customSshHosts) {
+        parsed.customSshHosts = [];
+      }
+      return parsed;
     }
   } catch (e) {
     console.error('Failed to load settings', e);
@@ -50,6 +228,7 @@ function loadSettings(): AppSettings {
     lastConnection: 'Local',
     windowWidth: 1200,
     windowHeight: 800,
+    customSshHosts: [],
   };
 }
 
@@ -814,22 +993,118 @@ ipcMain.handle('open-directory-dialog', async () => {
 });
 
 
+function resolveIncludePattern(pattern: string): string[] {
+  let resolvedPattern = pattern;
+  if (resolvedPattern.startsWith('~/')) {
+    resolvedPattern = path.join(process.env.HOME || process.env.USERPROFILE || '', resolvedPattern.slice(2));
+  } else if (!path.isAbsolute(resolvedPattern)) {
+    resolvedPattern = path.join(process.env.HOME || process.env.USERPROFILE || '', '.ssh', resolvedPattern);
+  }
+
+  if (resolvedPattern.includes('*') || resolvedPattern.includes('?')) {
+    const wildcardIdx = Math.min(
+      resolvedPattern.indexOf('*') !== -1 ? resolvedPattern.indexOf('*') : resolvedPattern.length,
+      resolvedPattern.indexOf('?') !== -1 ? resolvedPattern.indexOf('?') : resolvedPattern.length
+    );
+    const dirPart = resolvedPattern.substring(0, wildcardIdx);
+    const lastSepIdx = dirPart.lastIndexOf('/');
+    if (lastSepIdx === -1) {
+      return [];
+    }
+    const searchDir = dirPart.substring(0, lastSepIdx);
+    const filePattern = resolvedPattern.substring(lastSepIdx + 1);
+
+    if (!fs.existsSync(searchDir)) {
+      return [];
+    }
+
+    try {
+      const files = fs.readdirSync(searchDir);
+      const regexStr = '^' + filePattern
+        .replace(/\./g, '\\.')
+        .replace(/\*/g, '.*')
+        .replace(/\?/g, '.') + '$';
+      const regex = new RegExp(regexStr);
+
+      const matched: string[] = [];
+      for (const file of files) {
+        if (regex.test(file)) {
+          matched.push(path.join(searchDir, file));
+        }
+      }
+      return matched;
+    } catch (e) {
+      console.error(`Error resolving ssh config include glob pattern ${pattern}`, e);
+      return [];
+    }
+  }
+
+  return [resolvedPattern];
+}
+
+function readSSHConfigLines(configPath: string, visited: Set<string> = new Set()): string[] {
+  let resolvedPath = configPath;
+  if (resolvedPath.startsWith('~/')) {
+    resolvedPath = path.join(process.env.HOME || process.env.USERPROFILE || '', resolvedPath.slice(2));
+  } else if (!path.isAbsolute(resolvedPath)) {
+    resolvedPath = path.join(process.env.HOME || process.env.USERPROFILE || '', '.ssh', resolvedPath);
+  }
+
+  const realPath = fs.existsSync(resolvedPath) ? fs.realpathSync(resolvedPath) : resolvedPath;
+  if (visited.has(realPath)) {
+    return [];
+  }
+  visited.add(realPath);
+
+  if (!fs.existsSync(resolvedPath)) {
+    return [];
+  }
+
+  try {
+    const content = fs.readFileSync(resolvedPath, 'utf8');
+    const lines = content.split('\n');
+    const resultLines: string[] = [];
+
+    for (let line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) {
+        resultLines.push(line);
+        continue;
+      }
+
+      const includeMatch = trimmed.match(/^Include\s+(.+)$/i);
+      if (includeMatch) {
+        const includePattern = includeMatch[1].trim().replace(/['"]/g, '');
+        const matchedPaths = resolveIncludePattern(includePattern);
+        for (const matchedPath of matchedPaths) {
+          resultLines.push(...readSSHConfigLines(matchedPath, visited));
+        }
+      } else {
+        resultLines.push(line);
+      }
+    }
+    return resultLines;
+  } catch (err) {
+    console.error(`Failed to read SSH config file at ${resolvedPath}`, err);
+    return [];
+  }
+}
+
 // Parse SSH Config for Hosts
 ipcMain.handle('get-ssh-hosts', async () => {
   const sshConfigPath = path.join(process.env.HOME || process.env.USERPROFILE || '', '.ssh', 'config');
-  if (!fs.existsSync(sshConfigPath)) {
-    return [];
-  }
   try {
-    const content = fs.readFileSync(sshConfigPath, 'utf8');
+    const lines = readSSHConfigLines(sshConfigPath);
     const hosts: string[] = [];
-    const lines = content.split('\n');
     for (const line of lines) {
       const match = line.trim().match(/^Host\s+(.+)$/i);
       if (match) {
         const hostVal = match[1].trim();
-        if (!hostVal.includes('*')) {
-          hosts.push(hostVal);
+        const individualHosts = hostVal.split(/\s+/);
+        for (const host of individualHosts) {
+          if (!host.includes('*')) {
+            hosts.push(host);
+          }
         }
       }
     }
@@ -845,26 +1120,98 @@ interface SSHHostConfig {
   port: number;
   username: string;
   privateKey?: string;
+  certificate?: string;
   agent?: string;
+  proxyJump?: string;
+  alias?: string;
+  identitiesOnly?: boolean;
 }
 
-function getSSHConfigForHost(hostName: string): SSHHostConfig {
-  const config: SSHHostConfig = {
-    host: '127.0.0.1',
-    port: 22,
-    username: process.env.USER || 'root',
-    agent: process.env.SSH_AUTH_SOCK
-  };
+function matchHostLine(hostVal: string, hostName: string): boolean {
+  const patterns = hostVal.split(/\s+/);
+  const host = hostName.toLowerCase();
+  
+  let hasPositive = false;
+  let matchedPositive = false;
+  let matchedNegative = false;
 
-  const sshConfigPath = path.join(process.env.HOME || process.env.USERPROFILE || '', '.ssh', 'config');
-  if (!fs.existsSync(sshConfigPath)) {
-    return config;
+  for (const pattern of patterns) {
+    if (!pattern) continue;
+    
+    const isNegated = pattern.startsWith('!');
+    const cleanPattern = isNegated ? pattern.slice(1) : pattern;
+    
+    const pat = cleanPattern.toLowerCase();
+    const regexStr = '^' + pat
+      .replace(/[\-\[\]\/\{\}\(\)\+\.\^\$\|]/g, '\\$&')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.') + '$';
+    const regex = new RegExp(regexStr);
+    const isMatch = regex.test(host);
+
+    if (isNegated) {
+      if (isMatch) {
+        matchedNegative = true;
+      }
+    } else {
+      hasPositive = true;
+      if (isMatch) {
+        matchedPositive = true;
+      }
+    }
   }
 
+  if (matchedNegative) {
+    return false;
+  }
+  if (hasPositive) {
+    return matchedPositive;
+  }
+  return true;
+}
+
+function isOpenSSHKeyEncrypted(keyStr: string): boolean {
+  if (keyStr.includes('ENCRYPTED') || keyStr.includes('encrypted')) {
+    return true;
+  }
+  if (keyStr.includes('-----BEGIN OPENSSH PRIVATE KEY-----')) {
+    const lines = keyStr.split('\n');
+    let base64Str = '';
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('-----')) {
+        base64Str += trimmed;
+      }
+    }
+    try {
+      const buffer = Buffer.from(base64Str, 'base64');
+      const magic = buffer.toString('utf8', 0, 15);
+      if (magic === 'openssh-key-v1\0') {
+        const cipherLen = buffer.readUInt32BE(15);
+        const cipher = buffer.toString('utf8', 19, 19 + cipherLen);
+        return cipher !== 'none';
+      }
+    } catch (e) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function getSSHConfigForHost(hostName: string): SSHHostConfig | null {
+  const sshConfigPath = path.join(process.env.HOME || process.env.USERPROFILE || '', '.ssh', 'config');
   try {
-    const content = fs.readFileSync(sshConfigPath, 'utf8');
-    const lines = content.split('\n');
+    const lines = readSSHConfigLines(sshConfigPath);
     let insideTargetHost = false;
+    let found = false;
+    const setKeys = new Set<string>();
+
+    const config: SSHHostConfig = {
+      host: '',
+      port: 22,
+      username: process.env.USER || 'root',
+      agent: process.env.SSH_AUTH_SOCK
+    };
 
     for (let line of lines) {
       line = line.trim();
@@ -872,9 +1219,10 @@ function getSSHConfigForHost(hostName: string): SSHHostConfig {
 
       const hostMatch = line.match(/^Host\s+(.+)$/i);
       if (hostMatch) {
-        const currentHost = hostMatch[1].trim();
-        if (currentHost === hostName) {
+        const hostVal = hostMatch[1].trim();
+        if (matchHostLine(hostVal, hostName)) {
           insideTargetHost = true;
+          found = true;
         } else {
           insideTargetHost = false;
         }
@@ -885,18 +1233,21 @@ function getSSHConfigForHost(hostName: string): SSHHostConfig {
         const keyValueMatch = line.match(/^([a-zA-Z0-9_\-]+)\s+(.+)$/);
         if (keyValueMatch) {
           const key = keyValueMatch[1].toLowerCase();
-          const value = keyValueMatch[2].trim();
+          const value = keyValueMatch[2].trim().replace(/['"]/g, '');
 
-          if (key === 'hostname') {
+          if (key === 'hostname' && !setKeys.has('host')) {
             config.host = value;
-          } else if (key === 'user') {
+            setKeys.add('host');
+          } else if (key === 'user' && !setKeys.has('username')) {
             config.username = value;
-          } else if (key === 'port') {
+            setKeys.add('username');
+          } else if (key === 'port' && !setKeys.has('port')) {
             const p = parseInt(value, 10);
             if (!isNaN(p)) {
               config.port = p;
+              setKeys.add('port');
             }
-          } else if (key === 'identityfile') {
+          } else if (key === 'identityfile' && !setKeys.has('privatekey')) {
             let keyPath = value;
             if (keyPath.startsWith('~/')) {
               keyPath = path.join(process.env.HOME || process.env.USERPROFILE || '', keyPath.slice(2));
@@ -904,19 +1255,52 @@ function getSSHConfigForHost(hostName: string): SSHHostConfig {
             if (fs.existsSync(keyPath)) {
               try {
                 config.privateKey = fs.readFileSync(keyPath, 'utf8');
+                setKeys.add('privatekey');
               } catch (e) {
                 console.error(`Failed to read identity file ${keyPath}`, e);
               }
             }
+          } else if (key === 'certificatefile' && !setKeys.has('certificate')) {
+            let certPath = value;
+            if (certPath.startsWith('~/')) {
+              certPath = path.join(process.env.HOME || process.env.USERPROFILE || '', certPath.slice(2));
+            }
+            if (fs.existsSync(certPath)) {
+              try {
+                config.certificate = fs.readFileSync(certPath, 'utf8');
+                setKeys.add('certificate');
+              } catch (e) {
+                console.error(`Failed to read certificate file ${certPath}`, e);
+              }
+            }
+          } else if (key === 'proxyjump' && !setKeys.has('proxyjump')) {
+            config.proxyJump = value;
+            setKeys.add('proxyjump');
+          } else if (key === 'identitiesonly' && !setKeys.has('identitiesonly')) {
+            config.identitiesOnly = value.toLowerCase() === 'yes';
+            setKeys.add('identitiesonly');
           }
         }
       }
+    }
+    if (found) {
+      if (!config.host) {
+        config.host = hostName;
+      }
+      config.alias = hostName;
+
+      // If identitiesonly is yes, or if privateKey is unencrypted, disable agent!
+      if (config.privateKey && (config.identitiesOnly || !isOpenSSHKeyEncrypted(config.privateKey))) {
+        config.agent = undefined;
+      }
+
+      return config;
     }
   } catch (err) {
     console.error('Failed to parse ssh config for host details', err);
   }
 
-  return config;
+  return null;
 }
 
 function execCommand(client: Client, cmd: string): Promise<string> {
@@ -1114,17 +1498,277 @@ function createLocalForwardTunnel(client: Client, localPort: number, remotePort:
   });
 }
 
+function resolveSSHConfig(hostNameOrConfig: string | ManualSSHConfig): { config: SSHHostConfig, displayName: string } {
+  const defaultUser = process.env.USER || 'root';
+  
+  if (typeof hostNameOrConfig !== 'string') {
+    const cfg = hostNameOrConfig;
+    const host = cfg.host;
+    
+    // Check if the hostname entered manually is an alias in ~/.ssh/config
+    const sshConfig = getSSHConfigForHost(host);
+    
+    // Use values from .ssh/config, override with manually provided ones
+    const resolvedHost = sshConfig ? sshConfig.host : host;
+    const port = cfg.port || (sshConfig ? sshConfig.port : 22);
+    const username = cfg.username || (sshConfig ? sshConfig.username : defaultUser);
+    const displayName = `${username}@${host}:${port}`;
+    
+    const config: SSHHostConfig = {
+      host: resolvedHost,
+      port,
+      username,
+      agent: process.env.SSH_AUTH_SOCK,
+      alias: host,
+      proxyJump: sshConfig ? sshConfig.proxyJump : undefined,
+      certificate: sshConfig ? sshConfig.certificate : undefined,
+      identitiesOnly: sshConfig ? sshConfig.identitiesOnly : undefined
+    };
+    
+    // Use manual private key first, fallback to ssh config key
+    if (cfg.privateKeyPath) {
+      let keyPath = cfg.privateKeyPath;
+      if (keyPath.startsWith('~/')) {
+        keyPath = path.join(process.env.HOME || process.env.USERPROFILE || '', keyPath.slice(2));
+      }
+      if (fs.existsSync(keyPath)) {
+        try {
+          config.privateKey = fs.readFileSync(keyPath, 'utf8');
+        } catch (e) {
+          console.error(`Failed to read identity file ${keyPath}`, e);
+        }
+      }
+    } else if (sshConfig && sshConfig.privateKey) {
+      config.privateKey = sshConfig.privateKey;
+    }
+
+    if (config.privateKey && (config.identitiesOnly || !isOpenSSHKeyEncrypted(config.privateKey))) {
+      config.agent = undefined;
+    }
+    
+    return { config, displayName };
+  }
+
+  const hostName = hostNameOrConfig;
+  
+  // 1. Check custom saved hosts in settings
+  const settings = loadSettings();
+  if (settings.customSshHosts) {
+    const matched = settings.customSshHosts.find(c => c.label === hostName || `${c.username}@${c.host}:${c.port}` === hostName);
+    if (matched) {
+      // Delegate to the object-based path to correctly lookup alias in .ssh/config and use privateKeyPath
+      return resolveSSHConfig({
+        host: matched.host,
+        port: matched.port,
+        username: matched.username,
+        privateKeyPath: matched.privateKeyPath
+      });
+    }
+  }
+
+  // 2. Check ~/.ssh/config using getSSHConfigForHost
+  const sshConfig = getSSHConfigForHost(hostName);
+  if (sshConfig) {
+    return { config: sshConfig, displayName: hostName };
+  }
+
+  // 3. Fallback: Parse hostname of format [username@]host[:port]
+  let host = hostName;
+  let username = defaultUser;
+  let port = 22;
+
+  if (host.includes('@')) {
+    const parts = host.split('@');
+    username = parts[0];
+    host = parts[1];
+  }
+  if (host.includes(':')) {
+    const parts = host.split(':');
+    host = parts[0];
+    const p = parseInt(parts[1], 10);
+    if (!isNaN(p)) {
+      port = p;
+    }
+  }
+
+  // Check if the parsed hostname matches an alias in .ssh/config
+  const fallbackSshConfig = getSSHConfigForHost(host);
+  if (fallbackSshConfig) {
+    // Override with parsed username/port if explicitly provided in connection string
+    if (hostName.includes('@')) {
+      fallbackSshConfig.username = username;
+    }
+    if (hostName.includes(':')) {
+      fallbackSshConfig.port = port;
+    }
+    return { config: fallbackSshConfig, displayName: `${username}@${host}:${port}` };
+  }
+
+  const config: SSHHostConfig = {
+    host,
+    port,
+    username,
+    agent: process.env.SSH_AUTH_SOCK,
+    alias: host
+  };
+  return { config, displayName: `${username}@${host}:${port}` };
+}
+
+function prepareConnectOptions(opts: any): any {
+  const prepared = { ...opts };
+  if (prepared.privateKey && prepared.certificate) {
+    const keyBuffer = Buffer.from(prepared.privateKey) as any;
+    keyBuffer.certificate = prepared.certificate;
+    prepared.privateKey = keyBuffer;
+  }
+  return prepared;
+}
+
+// Summarise a config for logging. Never include privateKey/certificate — those
+// would put key material in plaintext into the console and log files.
+function describeSSHConfig(config: SSHHostConfig): string {
+  const creds: string[] = [];
+  if (config.privateKey) creds.push('key');
+  if (config.certificate) creds.push('cert');
+  if (config.agent) creds.push('agent');
+  const parts = [`${config.username}@${config.host}:${config.port}`];
+  if (config.alias && config.alias !== config.host) parts.push(`alias=${config.alias}`);
+  if (config.proxyJump) parts.push(`proxyJump=${config.proxyJump}`);
+  parts.push(`auth=${creds.length ? creds.join('+') : 'none'}`);
+  return parts.join(' ');
+}
+
+function establishSSHStream(connConfig: SSHHostConfig, jumpClients: Client[] = []): Promise<any> {
+  console.log(`establishSSHStream: ${describeSSHConfig(connConfig)}`);
+  return new Promise(async (resolve, reject) => {
+    try {
+      if (!connConfig.proxyJump) {
+        resolve(undefined);
+        return;
+      }
+
+      // Parse the ProxyJump string
+      const proxyStr = connConfig.proxyJump.split(',')[0].trim();
+      let proxyUser = '';
+      let proxyHost = proxyStr;
+      
+      if (proxyStr.includes('@')) {
+        const parts = proxyStr.split('@');
+        proxyUser = parts[0];
+        proxyHost = parts[1];
+      }
+
+      // Replace %r, %n, %h, %p tokens
+      const replaceTokens = (str: string) => {
+        return str
+          .replace(/%r/g, connConfig.username)
+          .replace(/%n/g, connConfig.alias || connConfig.host)
+          .replace(/%h/g, connConfig.host)
+          .replace(/%p/g, String(connConfig.port));
+      };
+      
+      proxyHost = replaceTokens(proxyHost);
+      if (proxyUser) {
+        proxyUser = replaceTokens(proxyUser);
+      }
+
+      // Resolve config for the jump host
+      const jumpHostConfig = getSSHConfigForHost(proxyHost);
+      const resolvedJumpConfig: SSHHostConfig = jumpHostConfig || {
+        host: proxyHost,
+        port: 22,
+        username: proxyUser || process.env.USER || 'root',
+        agent: process.env.SSH_AUTH_SOCK
+      };
+
+      if (proxyUser) {
+        resolvedJumpConfig.username = proxyUser;
+      }
+
+      console.log(`Connecting to ProxyJump host: ${resolvedJumpConfig.host}:${resolvedJumpConfig.port} (user: ${resolvedJumpConfig.username})`);
+      
+      // Check if the jump host itself has a ProxyJump
+      const jumpSock = await establishSSHStream(resolvedJumpConfig, jumpClients);
+
+      // Create jump client
+      const jumpClient = new Client();
+      jumpClients.push(jumpClient);
+
+      await new Promise<void>((resJumpConnect, rejJumpConnect) => {
+        jumpClient.on('ready', () => resJumpConnect());
+        jumpClient.on('error', (err: any) => rejJumpConnect(err));
+        
+        const opts: any = prepareConnectOptions(resolvedJumpConfig);
+        if (jumpSock) {
+          opts.sock = jumpSock;
+        }
+        jumpClient.connect(opts);
+      });
+
+      console.log(`Forwarding connection through proxy to target: ${connConfig.host}:${connConfig.port}`);
+      jumpClient.forwardOut(
+        '127.0.0.1',
+        0,
+        connConfig.host,
+        connConfig.port,
+        (err: any, stream: any) => {
+          if (err) reject(err);
+          else resolve(stream);
+        }
+      );
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
 // SSH Bootstrapping & Port Forwarding Manager (Phase 6)
-ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
-  console.log(`SSH Remote Connection to host: ${hostName}`);
+ipcMain.handle('connect-ssh-remote', async (_, hostNameOrConfig: string | ManualSSHConfig) => {
+  const { config: connConfig, displayName } = resolveSSHConfig(hostNameOrConfig);
+  console.log(`SSH Remote Connection to host: ${displayName}`);
 
   await stopBackendProcesses();
 
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     sshClient = new Client();
+    const jumpClients: Client[] = [];
+
+    const cleanupTunnels = () => {
+      console.log('Cleaning up ProxyJump clients...');
+      for (const jc of jumpClients) {
+        try { jc.end(); } catch (e) {}
+      }
+    };
 
     sshClient.on('ready', async () => {
       console.log('SSH connection established successfully.');
+
+      // If it was a ManualSSHConfig object, save it to settings!
+      if (typeof hostNameOrConfig !== 'string') {
+        try {
+          const settings = loadSettings();
+          if (!settings.customSshHosts) {
+            settings.customSshHosts = [];
+          }
+          const exists = settings.customSshHosts.some(
+            c => c.host === hostNameOrConfig.host &&
+                 c.port === hostNameOrConfig.port &&
+                 c.username === hostNameOrConfig.username
+          );
+          if (!exists) {
+            settings.customSshHosts.push({
+              host: hostNameOrConfig.host,
+              port: hostNameOrConfig.port,
+              username: hostNameOrConfig.username,
+              privateKeyPath: hostNameOrConfig.privateKeyPath,
+              label: displayName
+            });
+            saveSettings(settings);
+          }
+        } catch (saveErr) {
+          console.error('Failed to save manual SSH config to settings:', saveErr);
+        }
+      }
 
       try {
         // 1. Perform bootstrapping remotely
@@ -1282,7 +1926,7 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
         console.log(`Local port forward tunnel server successfully listening.`);
 
         remotePortActive = remotePort;
-        resolve({ status: 'success', host: hostName, port: localPort });
+        resolve({ status: 'success', host: displayName, port: localPort });
       } catch (bootstrapErr: any) {
         console.error('Bootstrapping failed:', bootstrapErr);
         reject(bootstrapErr);
@@ -1291,13 +1935,26 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
 
     sshClient.on('error', (err) => {
       console.error('SSH Client Error:', err);
+      cleanupTunnels();
       reject(err);
     });
 
-    // Load config matching host from ~/.ssh/config using our parser,
-    // falling back to local credentials if no configuration is found.
-    const connConfig = getSSHConfigForHost(hostName);
-    console.log(`Connecting to SSH host [${hostName}] using target: ${connConfig.host}:${connConfig.port} (user: ${connConfig.username})`);
-    sshClient.connect(connConfig);
+    sshClient.on('close', () => {
+      cleanupTunnels();
+    });
+
+    try {
+      const sock = await establishSSHStream(connConfig, jumpClients);
+      const connectOpts: any = prepareConnectOptions(connConfig);
+      if (sock) {
+        connectOpts.sock = sock;
+      }
+      console.log(`Connecting to target SSH host [${displayName}] using target: ${connConfig.host}:${connConfig.port} (user: ${connConfig.username})`);
+      sshClient.connect(connectOpts);
+    } catch (err) {
+      console.error('ProxyJump setup failed:', err);
+      cleanupTunnels();
+      reject(err);
+    }
   });
 });
