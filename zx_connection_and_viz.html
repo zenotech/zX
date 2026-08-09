@@ -1,0 +1,230 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Syne:wght@400;500;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0A0B0F;--bg2:#111318;--bg3:#1A1C24;--bg4:#22252F;
+    --border:#2A2D38;--border2:#363A48;
+    --text:#E8EAF0;--text2:#8B8FA8;--text3:#555870;
+    --accent:#5B6BF8;--accent2:#7B8BFF;--accent-glow:rgba(91,107,248,0.12);
+    --green:#2ECC8A;--amber:#F5A623;--red:#F25757;--purple:#B57BFF;
+    --font-mono:'JetBrains Mono',monospace;--font-ui:'Syne',sans-serif;
+  }
+  body{background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:13px}
+  .layout{display:flex;gap:0;min-height:640px}
+  .left-pane{width:340px;flex-shrink:0;border-right:1px solid var(--border);padding:24px;display:flex;flex-direction:column;gap:20px}
+  .right-pane{flex:1;padding:24px;display:flex;flex-direction:column;gap:16px}
+  .pane-title{font-size:11px;color:var(--text3);font-family:var(--font-mono);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:12px}
+  .card{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px}
+  .seg-ctrl{display:flex;background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:3px;gap:2px;margin-bottom:16px}
+  .seg{flex:1;padding:6px;text-align:center;font-size:12px;border-radius:5px;cursor:pointer;color:var(--text2);transition:all .15s}
+  .seg.active{background:var(--accent);color:#fff;font-weight:500}
+  .label{font-size:11px;color:var(--text3);font-family:var(--font-mono);margin-bottom:5px}
+  .field{background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 11px;font-family:var(--font-mono);font-size:12px;color:var(--text);width:100%;margin-bottom:10px;outline:none}
+  .field:focus{border-color:var(--accent)}
+  select.field option{background:var(--bg3)}
+  .btn{border:1px solid var(--border2);background:var(--bg3);color:var(--text2);border-radius:6px;padding:7px 14px;cursor:pointer;font-family:var(--font-ui);font-size:12px;display:inline-flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap}
+  .btn:hover{border-color:var(--border);color:var(--text)}
+  .btn-full{width:100%;justify-content:center}
+  .btn-accent{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+  .btn-accent:hover{background:var(--accent2)}
+  .step-list{display:flex;flex-direction:column;gap:0}
+  .step{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)}
+  .step:last-child{border-bottom:none}
+  .step-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-family:var(--font-mono);font-weight:500;flex-shrink:0;margin-top:1px}
+  .sn-done{background:rgba(46,204,138,.15);color:var(--green);border:1px solid rgba(46,204,138,.3)}
+  .sn-active{background:var(--accent-glow);color:var(--accent2);border:1px solid rgba(91,107,248,.3)}
+  .sn-wait{background:var(--bg3);color:var(--text3);border:1px solid var(--border)}
+  .step-text{font-size:12px;color:var(--text2);padding-top:3px;font-family:var(--font-mono)}
+  .step-text b{color:var(--text);font-weight:500}
+  .step-sub{font-size:10px;color:var(--text3);margin-top:2px}
+  .pulse{animation:pulse 1.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .viz-tabs{display:flex;gap:16px;border-bottom:1px solid var(--border);padding-bottom:0;margin-bottom:16px}
+  .vtab{font-size:12px;padding:6px 0;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;font-family:var(--font-mono)}
+  .vtab:hover{color:var(--text2)}
+  .vtab.active{color:var(--accent2);border-bottom-color:var(--accent)}
+  .chart-area{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px;flex:1;position:relative}
+  .axis-sel{display:flex;gap:8px;margin-bottom:14px;align-items:center;flex-wrap:wrap}
+  .axis-label{font-size:11px;color:var(--text3);font-family:var(--font-mono)}
+  .axis-select{background:var(--bg3);border:1px solid var(--border);border-radius:5px;padding:4px 8px;font-family:var(--font-mono);font-size:11px;color:var(--text2);outline:none;cursor:pointer}
+  .scatter-svg{width:100%;display:block}
+  .mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .mini-card{background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px}
+  .mini-title{font-size:10px;color:var(--text3);font-family:var(--font-mono);letter-spacing:.5px;margin-bottom:8px;text-transform:uppercase}
+</style>
+<div class="layout">
+  <div class="left-pane">
+    <div>
+      <div class="pane-title">connection</div>
+      <div class="seg-ctrl">
+        <div class="seg">local</div>
+        <div class="seg active">remote</div>
+      </div>
+      <div class="label">ssh host</div>
+      <select class="field">
+        <option>gpu-cluster.lab.ac.uk</option>
+        <option>hpc-login.university.edu</option>
+        <option>dev-box.internal</option>
+      </select>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <div class="label">tunnel port</div>
+          <input class="field" value="18432" type="text">
+        </div>
+        <div>
+          <div class="label">user</div>
+          <input class="field" value="jsmith" type="text">
+        </div>
+      </div>
+      <div class="label">identity file</div>
+      <input class="field" value="~/.ssh/id_ed25519" type="text">
+    </div>
+
+    <div>
+      <div class="pane-title">bootstrap status</div>
+      <div class="step-list">
+        <div class="step">
+          <div class="step-num sn-done">✓</div>
+          <div><div class="step-text"><b>ssh handshake</b></div><div class="step-sub">gpu-cluster.lab.ac.uk · 42ms</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num sn-done">✓</div>
+          <div><div class="step-text"><b>uv installed</b></div><div class="step-sub">~/.zx/python · uv 0.4.2</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num sn-done">✓</div>
+          <div><div class="step-text"><b>backend deployed</b></div><div class="step-sub">scp zx_backend-0.1.0-py3-none.whl</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num sn-active pulse">◌</div>
+          <div><div class="step-text"><b>port forward</b></div><div class="step-sub pulse">establishing tunnel localhost:18432 ↔ 8000</div></div>
+        </div>
+        <div class="step">
+          <div class="step-num sn-wait">5</div>
+          <div><div class="step-text" style="color:var(--text3)">token auth</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="label">project directory (remote)</div>
+      <input class="field" value="~/experiments/camel-opt" type="text">
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn btn-accent btn-full">Connect</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="right-pane">
+    <div style="display:flex;align-items:center;gap:8px">
+      <div style="font-size:15px;font-weight:600">visualization</div>
+      <div style="margin-left:auto;font-family:var(--font-mono);font-size:11px;color:var(--text3)">camel-exploration · 24 rows · iter 2</div>
+    </div>
+
+    <div class="viz-tabs">
+      <div class="vtab active">scatter</div>
+      <div class="vtab">pareto front</div>
+      <div class="vtab">parallel coords</div>
+      <div class="vtab">custom plot.py</div>
+    </div>
+
+    <div class="axis-sel">
+      <span class="axis-label">x axis</span>
+      <select class="axis-select"><option>x1</option><option>x2</option><option>f_x</option></select>
+      <span class="axis-label">y axis</span>
+      <select class="axis-select"><option selected>f_x</option><option>x1</option><option>x2</option></select>
+      <span class="axis-label">color by</span>
+      <select class="axis-select"><option>_zx_iteration</option><option>_zx_status</option><option>x2</option></select>
+      <span style="margin-left:auto;font-size:11px;color:var(--text3);font-family:var(--font-mono)">24 pts · 2 highlighted</span>
+    </div>
+
+    <div class="chart-area">
+      <svg class="scatter-svg" viewBox="0 0 560 260" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="g1" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#5B6BF8" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="#B57BFF" stop-opacity="0.04"/>
+          </linearGradient>
+        </defs>
+        <rect width="560" height="260" fill="transparent"/>
+        <!-- grid lines -->
+        <line x1="50" y1="20" x2="50" y2="230" stroke="#2A2D38" stroke-width="0.5"/>
+        <line x1="180" y1="20" x2="180" y2="230" stroke="#2A2D38" stroke-width="0.5"/>
+        <line x1="310" y1="20" x2="310" y2="230" stroke="#2A2D38" stroke-width="0.5"/>
+        <line x1="440" y1="20" x2="440" y2="230" stroke="#2A2D38" stroke-width="0.5"/>
+        <line x1="50" y1="230" x2="540" y2="230" stroke="#2A2D38" stroke-width="0.5"/>
+        <line x1="50" y1="170" x2="540" y2="170" stroke="#2A2D38" stroke-width="0.5"/>
+        <line x1="50" y1="110" x2="540" y2="110" stroke="#2A2D38" stroke-width="0.5"/>
+        <line x1="50" y1="50" x2="540" y2="50" stroke="#2A2D38" stroke-width="0.5"/>
+        <!-- axis labels -->
+        <text x="295" y="252" text-anchor="middle" fill="#555870" font-size="11" font-family="JetBrains Mono">x1</text>
+        <text x="22" y="125" text-anchor="middle" fill="#555870" font-size="11" font-family="JetBrains Mono" transform="rotate(-90,22,125)">f(x)</text>
+        <!-- iter 0 dots (gray) -->
+        <circle cx="88" cy="155" r="5" fill="#363A48"/>
+        <circle cx="130" cy="195" r="5" fill="#363A48"/>
+        <circle cx="165" cy="145" r="5" fill="#363A48"/>
+        <circle cx="215" cy="175" r="5" fill="#363A48"/>
+        <circle cx="255" cy="185" r="5" fill="#363A48"/>
+        <circle cx="340" cy="165" r="5" fill="#363A48"/>
+        <circle cx="380" cy="140" r="5" fill="#363A48"/>
+        <circle cx="420" cy="180" r="5" fill="#363A48"/>
+        <circle cx="470" cy="155" r="5" fill="#363A48"/>
+        <circle cx="500" cy="135" r="5" fill="#363A48"/>
+        <!-- iter 1 dots (accent blue) -->
+        <circle cx="110" cy="100" r="5.5" fill="#5B6BF8" opacity="0.9"/>
+        <circle cx="195" cy="88" r="5.5" fill="#5B6BF8" opacity="0.9"/>
+        <circle cx="290" cy="120" r="5.5" fill="#5B6BF8" opacity="0.9"/>
+        <circle cx="360" cy="95" r="5.5" fill="#5B6BF8" opacity="0.9"/>
+        <circle cx="445" cy="108" r="5.5" fill="#5B6BF8" opacity="0.9"/>
+        <!-- iter 2 dots (purple / current) -->
+        <circle cx="240" cy="58" r="6.5" fill="#B57BFF" opacity="0.95"/>
+        <circle cx="305" cy="65" r="6.5" fill="#B57BFF" opacity="0.95"/>
+        <!-- best point highlight -->
+        <circle cx="240" cy="58" r="11" fill="none" stroke="#B57BFF" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.7"/>
+        <circle cx="240" cy="58" r="6.5" fill="#B57BFF"/>
+        <!-- label -->
+        <rect x="220" y="30" width="90" height="20" rx="3" fill="#1A1C24" stroke="#363A48" stroke-width="0.5"/>
+        <text x="265" y="44" text-anchor="middle" fill="#B57BFF" font-size="10" font-family="JetBrains Mono">−1.031 ★</text>
+        <line x1="240" y1="50" x2="252" y2="42" stroke="#B57BFF" stroke-width="0.8" opacity="0.6"/>
+        <!-- legend -->
+        <circle cx="70" cy="36" r="4" fill="#363A48"/>
+        <text x="78" y="40" fill="#555870" font-size="10" font-family="JetBrains Mono">iter 0</text>
+        <circle cx="118" cy="36" r="4" fill="#5B6BF8"/>
+        <text x="126" y="40" fill="#8B8FA8" font-size="10" font-family="JetBrains Mono">iter 1</text>
+        <circle cx="166" cy="36" r="4" fill="#B57BFF"/>
+        <text x="174" y="40" fill="#8B8FA8" font-size="10" font-family="JetBrains Mono">iter 2</text>
+        <!-- axes -->
+        <line x1="50" y1="20" x2="50" y2="235" stroke="#363A48" stroke-width="1"/>
+        <line x1="45" y1="230" x2="545" y2="230" stroke="#363A48" stroke-width="1"/>
+      </svg>
+    </div>
+
+    <div class="mini-grid">
+      <div class="mini-card">
+        <div class="mini-title">convergence</div>
+        <svg viewBox="0 0 220 60" style="width:100%;display:block">
+          <polyline points="10,50 50,42 90,30 130,18 170,12 210,8" fill="none" stroke="#5B6BF8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <line x1="10" y1="55" x2="210" y2="55" stroke="#2A2D38" stroke-width="0.5"/>
+          <text x="10" y="58" fill="#555870" font-size="8" font-family="JetBrains Mono">0</text>
+          <text x="200" y="58" fill="#555870" font-size="8" font-family="JetBrains Mono">iter</text>
+          <circle cx="210" cy="8" r="3" fill="#B57BFF"/>
+        </svg>
+      </div>
+      <div class="mini-card">
+        <div class="mini-title">objective distribution</div>
+        <svg viewBox="0 0 220 60" style="width:100%;display:block">
+          <rect x="20" y="40" width="16" height="14" rx="1" fill="#363A48"/>
+          <rect x="44" y="28" width="16" height="26" rx="1" fill="#363A48"/>
+          <rect x="68" y="18" width="16" height="36" rx="1" fill="#5B6BF8" opacity="0.7"/>
+          <rect x="92" y="24" width="16" height="30" rx="1" fill="#5B6BF8" opacity="0.7"/>
+          <rect x="116" y="32" width="16" height="22" rx="1" fill="#363A48"/>
+          <rect x="140" y="38" width="16" height="16" rx="1" fill="#363A48"/>
+          <rect x="164" y="44" width="16" height="10" rx="1" fill="#363A48"/>
+          <line x1="10" y1="55" x2="210" y2="55" stroke="#2A2D38" stroke-width="0.5"/>
+          <text x="68" y="13" fill="#B57BFF" font-size="8" font-family="JetBrains Mono">best</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+</div>
