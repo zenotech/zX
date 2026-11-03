@@ -6,7 +6,7 @@ import pandas as pd
 from pathlib import Path
 
 # Add backend directory to Python path
-sys.path.append(str(Path(__file__).resolve().parents[1] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from zx_backend.database import initialize_project_database, load_database
 from zx_backend.runner import run_loop_in_thread
@@ -51,7 +51,7 @@ import sys
 import re
 
 def launch(row: dict, state: dict, run_dir: Path) -> dict:
-    script_path = "/Users/jamil.appa/Documents/zX/test_apps/zdt1.py"
+    script_path = "__SCRIPT_PATH__"
     
     use_slurm = state.get("use_slurm", False) or row.get("use_slurm", False)
     
@@ -208,7 +208,7 @@ def main():
     # Write hooks to directory
     with open(hooks_dir / "initialize.py", "w") as f: f.write(zdt1_initialize)
     with open(hooks_dir / "preprocess.py", "w") as f: f.write(zdt1_preprocess)
-    with open(hooks_dir / "launch.py", "w") as f: f.write(zdt1_launch)
+    with open(hooks_dir / "launch.py", "w") as f: f.write(zdt1_launch.replace("__SCRIPT_PATH__", str(Path(__file__).resolve().parent / "zdt1.py")))
     with open(hooks_dir / "extract.py", "w") as f: f.write(zdt1_extract)
     with open(hooks_dir / "explore.py", "w") as f: f.write(zdt1_explore)
     with open(hooks_dir / "plot.py", "w") as f: f.write(zdt1_plot)

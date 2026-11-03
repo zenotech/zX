@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Install backend and test dependencies
+        run: pip install ./backend numpy scikit-learn
+
+      - name: Slurm status mapping
+        run: python test_apps/test_slurm_status.py
+
+      - name: Six-Hump Camel end-to-end
+        run: python test_apps/run_camel_e2e.py
+
+      - name: ZDT1 end-to-end
+        run: python test_apps/run_zdt1_e2e.py

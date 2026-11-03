@@ -55,8 +55,7 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*",
-      "templates/**/*"
+      "dist-electron/**/*"
     ],
     "extraResources": [
       {

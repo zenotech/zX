@@ -41,9 +41,14 @@ class TerminalSession:
             self.read_task = loop.create_task(self.read_from_pty())
 
     async def read_from_pty(self):
+        # Wake only when the pty has output instead of polling it
+        loop = asyncio.get_running_loop()
+        readable = asyncio.Event()
+        loop.add_reader(self.master_fd, readable.set)
         try:
             while True:
-                await asyncio.sleep(0.01)
+                await readable.wait()
+                readable.clear()
                 try:
                     data = os.read(self.master_fd, 4096)
                     if not data:
@@ -58,6 +63,10 @@ class TerminalSession:
         except Exception as e:
             logger.error(f"PTY read error: {e}")
         finally:
+            try:
+                loop.remove_reader(self.master_fd)
+            except Exception:
+                pass
             try:
                 await self.ws.close()
             except Exception:
@@ -81,13 +90,15 @@ class TerminalSession:
     def close(self):
         if self.read_task:
             self.read_task.cancel()
-        if self.master_fd:
-            try:
-                os.close(self.master_fd)
-            except OSError:
-                pass
         if self.pid:
             try:
                 os.kill(self.pid, 9)
+                os.waitpid(self.pid, 0)  # reap the shell so it does not linger as a zombie
+            except OSError:
+                pass
+        if self.master_fd:
+            try:
+                asyncio.get_running_loop().remove_reader(self.master_fd)
+                os.close(self.master_fd)
             except OSError:
                 pass
