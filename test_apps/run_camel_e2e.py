@@ -51,7 +51,7 @@ import sys
 import re
 
 def launch(row: dict, state: dict, run_dir: Path) -> dict:
-    script_path = "/Users/jamil.appa/Documents/zX/test_apps/six_hump_camel.py"
+    script_path = "__SCRIPT_PATH__"
     
     use_slurm = state.get("use_slurm", False) or row.get("use_slurm", False)
     
@@ -295,7 +295,7 @@ def main():
     # Write hooks to directory
     with open(hooks_dir / "initialize.py", "w") as f: f.write(camel_initialize)
     with open(hooks_dir / "preprocess.py", "w") as f: f.write(camel_preprocess)
-    with open(hooks_dir / "launch.py", "w") as f: f.write(camel_launch)
+    with open(hooks_dir / "launch.py", "w") as f: f.write(camel_launch.replace("__SCRIPT_PATH__", str(Path(__file__).resolve().parent / "six_hump_camel.py")))
     with open(hooks_dir / "extract.py", "w") as f: f.write(camel_extract)
     with open(hooks_dir / "explore.py", "w") as f: f.write(camel_explore)
     with open(hooks_dir / "plot.py", "w") as f: f.write(camel_plot)
