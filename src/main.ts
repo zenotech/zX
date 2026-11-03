@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import path from 'path';
-import { spawn, ChildProcess, exec } from 'child_process';
+import { spawn, ChildProcess, exec, execFileSync } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import { Client } from 'ssh2';
@@ -274,23 +274,6 @@ async function startBackend(): Promise<number> {
       ZX_AUTH_TOKEN: authToken,
       ZX_PROJECTS_DIR: resolveLocalProjectsDir(),
     } as Record<string, string>;
-
-    // Clean up any stray backend processes currently occupying port 8000
-    console.log('Cleaning up any stray backend processes on port 8000...');
-    if (process.platform === 'win32') {
-      try {
-        await runLocalCommand('taskkill /F /IM python.exe /T || true', env);
-      } catch (e) {
-        console.log('Windows taskkill ignored:', e);
-      }
-    } else {
-      try {
-        await runLocalCommand('pkill -f "uvicorn zx_backend.main:app" || true', env);
-        // We no longer run lsof kill since we dynamically find a free port!
-      } catch (e) {
-        console.log('Unix pkill ignored:', e);
-      }
-    }
 
     let pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
     let backendDir = '';
@@ -919,6 +902,22 @@ function getSSHConfigForHost(hostName: string): SSHHostConfig {
   return config;
 }
 
+// Accept only host keys already trusted in ~/.ssh/known_hosts (ssh-keygen -F also matches hashed entries).
+function isKnownHostKey(host: string, port: number, key: Buffer): boolean {
+  const lookup = port === 22 ? host : `[${host}]:${port}`;
+  try {
+    const out = execFileSync('ssh-keygen', ['-F', lookup], { encoding: 'utf8' });
+    const keyB64 = key.toString('base64');
+    if (out.split('\n').some((line) => !line.startsWith('#') && line.trim().split(/\s+/)[2] === keyB64)) {
+      return true;
+    }
+  } catch {
+    // ssh-keygen exits non-zero when the host is not in known_hosts
+  }
+  console.error(`SSH host key for ${lookup} is not in ~/.ssh/known_hosts. Connect once with 'ssh ${lookup}' to verify and trust it.`);
+  return false;
+}
+
 function execCommand(client: Client, cmd: string): Promise<string> {
   return new Promise((resolve, reject) => {
     client.exec(cmd, (err, stream) => {
@@ -1298,6 +1297,6 @@ ipcMain.handle('connect-ssh-remote', async (_, hostName: string) => {
     // falling back to local credentials if no configuration is found.
     const connConfig = getSSHConfigForHost(hostName);
     console.log(`Connecting to SSH host [${hostName}] using target: ${connConfig.host}:${connConfig.port} (user: ${connConfig.username})`);
-    sshClient.connect(connConfig);
+    sshClient.connect({ ...connConfig, hostVerifier: (key: Buffer) => isKnownHostKey(connConfig.host, connConfig.port, key) });
   });
 });

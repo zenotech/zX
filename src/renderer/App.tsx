@@ -635,6 +635,7 @@ export default function App() {
               <SharedStatePanel 
                 activeProject={activeProject}
                 apiCall={apiCall}
+                running={running}
               />
             </div>
           )}

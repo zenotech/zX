@@ -93,10 +93,7 @@ Execute the production packager script:
 
 ### What `package.sh` Does Under the Hood:
 
-1.  **Code Signing Configuration:** Automatically sets up system environment variables to support Apple macOS signing and notarization:
-    *   `APPLE_ID`: `jamil.appa@zenotech.com`
-    *   `APPLE_TEAM_ID`: `HDDG45ZM4G`
-    *   `APPLE_APP_SPECIFIC_PASSWORD`: uedy-sedx-xfji-hslx
+1.  **Code Signing Configuration:** Requires `APPLE_ID`, `APPLE_TEAM_ID` and `APPLE_APP_SPECIFIC_PASSWORD` to be set in your environment (the script stops if any is missing) for Apple macOS signing and notarization.
     *   `DEBUG` & `DEBUG_DMG` flags are activated to provide deep diagnostics from `electron-builder`, `electron-osx-sign`, and `electron-notarize`.
 2.  **Node Modules Check:** Verifies that all dependencies are installed, running `npm install` if required.
 3.  **Clean Stale Outputs:** Wipes previous packaging artifacts to guarantee a clean build state:
@@ -188,7 +185,6 @@ zX/
 │       ├── App.tsx         # Main frontend React coordinator
 │       └── index.css       # Core typography & Tailwind-like CSS variables
 ├── projects/               # Example parametric project templates
-├── templates/              # Default custom Python hook templates
 ├── develop.sh              # Multi-process dev bootstrap script
 ├── package.sh              # Local production packaging script
 ├── tsconfig.json           # Frontend TypeScript compiler options

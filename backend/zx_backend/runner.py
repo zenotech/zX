@@ -198,6 +198,9 @@ def run_loop_in_thread(
             # 2. Second Pass: Poll & Extract for all launched rows
             remaining_rows = list(launched_row_ids)
             while remaining_rows and not runner_state.stop_requested:
+                # One database read per poll pass, not one per row
+                df_jobs = load_database(project_path)
+                job_ids = dict(zip(df_jobs["_zx_row_id"], df_jobs["_zx_job_id"].map(sanitize_job_id)))
                 for row_id in list(remaining_rows):
                     if runner_state.stop_requested:
                         break
@@ -207,7 +210,7 @@ def run_loop_in_thread(
                     log_filepath = run_dir / "zx_hook.log"
                     
                     # Check if there is an active Slurm job ID
-                    job_id = get_job_id(project_path, row_id)
+                    job_id = job_ids.get(row_id, "")
                     if job_id:
                         # Check job status on scheduler
                         job_status = check_slurm_job_status(job_id, dry_run=dry_run)
@@ -403,13 +406,10 @@ def save_job_id(project_path: str, row_id: int, job_id: str):
         df.loc[idx, "_zx_job_id"] = sanitize_job_id(job_id)
         save_database(project_path, df)
 
-def get_job_id(project_path: str, row_id: int) -> str:
-    df = load_database(project_path)
-    idx = df[df["_zx_row_id"] == row_id].index
-    if not idx.empty:
-        val = df.loc[idx[0], "_zx_job_id"]
-        return sanitize_job_id(val)
-    return ""
+SLURM_ACTIVE_STATES = {
+    "PENDING", "RUNNING", "CONFIGURING", "COMPLETING", "REQUEUED", "RESIZING",
+    "SUSPENDED", "STAGE_OUT", "SIGNALING", "REQUEUE_HOLD", "REQUEUE_FED", "RESV_DEL_HOLD",
+}
 
 def check_slurm_job_status(job_id: str, dry_run: bool = False) -> str:
     """
@@ -422,32 +422,38 @@ def check_slurm_job_status(job_id: str, dry_run: bool = False) -> str:
 
     import subprocess
     # First check squeue to see if it is still running/pending
+    left_queue = False
     try:
-        res = subprocess.run(["squeue", "-j", str(job_id)], capture_output=True, text=True)
-        if res.returncode == 0:
-            if str(job_id) in res.stdout:
-                return "running"
+        res = subprocess.run(["squeue", "-h", "-j", str(job_id), "-o", "%i"], capture_output=True, text=True)
+        if res.returncode == 0 and str(job_id) in res.stdout.split():
+            return "running"
+        # Older Slurm exits non-zero with "Invalid job id" once the job has left the queue
+        left_queue = res.returncode == 0 or "invalid job id" in res.stderr.lower()
+    except FileNotFoundError:
+        # No Slurm on this machine (local runs / test cases): nothing to wait for.
+        return "completed"
     except Exception as e:
         logger.warning(f"Error calling squeue for job {job_id}: {e}")
 
-    # Next check sacct to get the detailed exit state if squeue doesn't find it
+    # Next check sacct to get the final state once squeue no longer lists the job
     try:
-        res = subprocess.run(["sacct", "-j", str(job_id), "-n", "-o", "State"], capture_output=True, text=True)
+        res = subprocess.run(["sacct", "-j", str(job_id), "-n", "-X", "-o", "State"], capture_output=True, text=True)
         if res.returncode == 0 and res.stdout.strip():
-            # Get the state of the main job (first token)
+            # First token of the main job line, e.g. "CANCELLED by 123" -> "CANCELLED"
             state = res.stdout.strip().split()[0].upper()
-            if state in ["COMPLETED"]:
+            if state == "COMPLETED":
                 return "completed"
-            elif state in ["FAILED", "CANCELLED", "TIMEOUT", "NODE_FAIL"]:
-                return "failed"
-            elif state in ["RUNNING", "PENDING"]:
+            if state in SLURM_ACTIVE_STATES:
                 return "running"
+            return "failed"
+    except FileNotFoundError:
+        return "completed"
     except Exception as e:
         logger.warning(f"Error calling sacct for job {job_id}: {e}")
 
-    # Fallback to avoid hanging on machines without slurm / when test cases run
-    # If both commands were run and the job wasn't found as running, we'll assume completed.
-    return "completed"
+    # Job left the queue but accounting has no record (accounting disabled): assume it finished.
+    # If squeue itself failed (scheduler busy), keep waiting rather than guess.
+    return "completed" if left_queue else "running"
 
 def execute_stage(
     stage_name: str,
@@ -498,60 +504,36 @@ def execute_stage(
                         # Artificially slow down dry run slightly to let UI render the state changes
                         time.sleep(0.5)
                         
-                    # Run hook
-                    if stage_name == "preprocess":
-                        if dry_run:
-                            with dry_run_patch():
-                                func(user_row, state, run_dir)
-                            print("[DRY-RUN] Preprocess stage finished successfully (simulated).")
-                        else:
-                            func(user_row, state, run_dir)
-                    elif stage_name == "launch":
-                        if dry_run:
-                            with dry_run_patch():
-                                result = func(user_row, state, run_dir)
-                                if isinstance(result, dict):
-                                    if "stdout" in result and result["stdout"]:
-                                        print(f"--- CLI stdout ---\n{result['stdout']}")
-                                    if "stderr" in result and result["stderr"]:
-                                        print(f"--- CLI stderr ---\n{result['stderr']}")
-                                    if "job_id" in result and result["job_id"]:
-                                        save_job_id(project_path, row_id, result["job_id"])
-                                else:
-                                    if result and hasattr(result, "stdout") and result.stdout:
-                                        print(f"--- CLI stdout ---\n{result.stdout}")
-                                    if result and hasattr(result, "stderr") and result.stderr:
-                                        print(f"--- CLI stderr ---\n{result.stderr}")
-                            print("[DRY-RUN] Launch stage finished successfully (simulated).")
-                        else:
+                    # Run hook (subprocess calls are mocked out in dry runs)
+                    with dry_run_patch() if dry_run else contextlib.nullcontext():
+                        if stage_name == "launch":
                             result = func(user_row, state, run_dir)
                             if isinstance(result, dict):
-                                if "stdout" in result and result["stdout"]:
-                                    print(f"--- CLI stdout ---\n{result['stdout']}")
-                                if "stderr" in result and result["stderr"]:
-                                    print(f"--- CLI stderr ---\n{result['stderr']}")
-                                if "job_id" in result and result["job_id"]:
-                                    save_job_id(project_path, row_id, result["job_id"])
+                                out, err, job_id = result.get("stdout"), result.get("stderr"), result.get("job_id")
                             else:
-                                if result and hasattr(result, "stdout") and result.stdout:
-                                    print(f"--- CLI stdout ---\n{result.stdout}")
-                                if result and hasattr(result, "stderr") and result.stderr:
-                                    print(f"--- CLI stderr ---\n{result.stderr}")
-                    elif stage_name == "extract":
-                        if dry_run:
-                            with dry_run_patch():
-                                try:
-                                    extracted = func(user_row, state, run_dir)
-                                    print(f"[DRY-RUN] Would extract output parameters: {extracted}")
-                                except Exception as e:
-                                    print(f"[DRY-RUN] Extraction failed (would fail in real run): {e}")
-                            print("[DRY-RUN] Extraction stage finished successfully (simulated).")
-                        else:
+                                out, err, job_id = getattr(result, "stdout", None), getattr(result, "stderr", None), None
+                            if out:
+                                print(f"--- CLI stdout ---\n{out}")
+                            if err:
+                                print(f"--- CLI stderr ---\n{err}")
+                            if job_id:
+                                save_job_id(project_path, row_id, job_id)
+                        elif stage_name == "extract" and dry_run:
+                            try:
+                                extracted = func(user_row, state, run_dir)
+                                print(f"[DRY-RUN] Would extract output parameters: {extracted}")
+                            except Exception as e:
+                                print(f"[DRY-RUN] Extraction failed (would fail in real run): {e}")
+                        elif stage_name == "extract":
                             extracted = func(user_row, state, run_dir)
                             if not isinstance(extracted, dict):
                                 raise TypeError("Extraction Hook must return a dict of key-value results.")
                             # Save extracted parameters to row database
                             merge_extraction_results(project_path, row_id, extracted)
+                        else:
+                            func(user_row, state, run_dir)
+                    if dry_run:
+                        print(f"[DRY-RUN] {stage_name.capitalize()} stage finished successfully (simulated).")
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
                     return str(e)
@@ -604,4 +586,3 @@ def merge_extraction_results(project_path: str, row_id: int, results: Dict[str, 
             
         save_database(project_path, df)
 
-# trigger_exploration_cascade is no longer used since the runner execution is fully iterative.

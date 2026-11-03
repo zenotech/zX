@@ -14,9 +14,10 @@ echo "=================================================="
 #export CSC_IDENTITY_AUTO_DISCOVERY=false
 export DEBUG="electron-builder,electron-osx-sign*,electron-notarize*"
 export DEBUG_DMG=true
-export APPLE_ID=jamil.appa@zenotech.com
-export APPLE_APP_SPECIFIC_PASSWORD=uedy-sedx-xfji-hslx
-export APPLE_TEAM_ID=HDDG45ZM4G
+# Notarization credentials come from the caller's environment, never from this file.
+: "${APPLE_ID:?Set APPLE_ID}"
+: "${APPLE_APP_SPECIFIC_PASSWORD:?Set APPLE_APP_SPECIFIC_PASSWORD}"
+: "${APPLE_TEAM_ID:?Set APPLE_TEAM_ID}"
 
 # 1. Check if Node dependencies are installed
 if [ ! -d "node_modules" ]; then

@@ -6,7 +6,7 @@ import pandas as pd
 from pathlib import Path
 
 # Add backend directory to Python path
-sys.path.append(str(Path(__file__).resolve().parents[1] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from zx_backend.database import initialize_project_database, load_database
 from zx_backend.runner import run_loop_in_thread

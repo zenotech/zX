@@ -8,6 +8,8 @@ from typing import Dict, List, Any, Tuple, Optional
 
 logger = logging.getLogger("zX_database")
 
+STALE_LOCK_SECONDS = 60
+
 # Cross-platform simple file-based lock
 class FileLock:
     def __init__(self, filepath: str, timeout: float = 5.0):
@@ -25,6 +27,14 @@ class FileLock:
                 self.locked = True
                 return self
             except FileExistsError:
+                # A lock left behind by a crashed or killed process would otherwise block forever
+                try:
+                    if time.time() - os.path.getmtime(self.lockfile) > STALE_LOCK_SECONDS:
+                        logger.warning(f"Removing stale lock {self.lockfile}")
+                        os.remove(self.lockfile)
+                        continue
+                except OSError:
+                    pass
                 if time.time() - start_time > self.timeout:
                     raise TimeoutError(f"Database lock timed out on {self.lockfile}")
                 time.sleep(0.1)
@@ -86,7 +96,10 @@ def save_database(project_path: str, df: pd.DataFrame) -> None:
     csv_path = get_csv_path(project_path)
     with FileLock(csv_path):
         try:
-            df.to_csv(csv_path, index=False)
+            # Write a temp file and swap it in, so a crash mid-write never truncates the database
+            tmp_path = csv_path + ".tmp"
+            df.to_csv(tmp_path, index=False)
+            os.replace(tmp_path, csv_path)
         except Exception as e:
             logger.error(f"Failed to write CSV at {csv_path}: {e}")
             raise e
@@ -124,8 +137,10 @@ def save_state(project_path: str, state: Dict[str, Any]) -> None:
         state_to_save.pop("workspace_dir", None)
         state_to_save.pop("force", None)
         state_to_save.pop("dry_run", None)
-        with open(state_path, "w", encoding="utf-8") as f:
+        tmp_path = state_path + ".tmp"
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(state_to_save, f, indent=4)
+        os.replace(tmp_path, state_path)
     except Exception as e:
         logger.error(f"Failed to save state json to {state_path}: {e}")
 

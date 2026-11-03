@@ -4,9 +4,10 @@ import { Save, Plus, Trash2, Sliders, ToggleLeft, ToggleRight, Loader2, CheckCir
 interface SharedStatePanelProps {
   activeProject: string;
   apiCall: (endpoint: string, method?: string, body?: any) => Promise<any>;
+  running: boolean;
 }
 
-export default function SharedStatePanel({ activeProject, apiCall }: SharedStatePanelProps) {
+export default function SharedStatePanel({ activeProject, apiCall, running }: SharedStatePanelProps) {
   const [stateData, setStateData] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
@@ -78,7 +79,8 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
   };
 
   const handleSave = useCallback(async () => {
-    if (!activeProject || saving) return;
+    // The runner saves its own copy of the state, so edits made mid-run would be lost
+    if (!activeProject || saving || running) return;
     setSaving(true);
     setSaveStatus('idle');
     try {
@@ -98,7 +100,7 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
     } finally {
       setSaving(false);
     }
-  }, [activeProject, stateData, saving, apiCall]);
+  }, [activeProject, stateData, saving, running, apiCall]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -172,9 +174,9 @@ export default function SharedStatePanel({ activeProject, apiCall }: SharedState
             )}
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || running}
               className="btn btn-sm btn-cyan px-4 py-2"
-              title="Save Configuration (Ctrl+S / ⌘S)"
+              title={running ? "Saving is disabled while the loop is running" : "Save Configuration (Ctrl+S / ⌘S)"}
             >
               {saving ? (
                 <>

@@ -28,7 +28,9 @@ logger = logging.getLogger("zX_backend")
 app = FastAPI(title="zX Backend Orchestrator")
 
 AUTH_TOKEN = os.environ.get("ZX_AUTH_TOKEN", "")
-logger.info(f"Auth token verification configured: {'enabled' if AUTH_TOKEN else 'disabled (empty)'}")
+if not AUTH_TOKEN:
+    # An empty token would accept "Bearer " from any local process or web page
+    sys.exit("ZX_AUTH_TOKEN is not set; refusing to start the zX backend without authentication.")
 
 # CORS Setup
 app.add_middleware(
@@ -161,7 +163,7 @@ class ProjectPathPayload(BaseModel):
     template_id: Optional[str] = None
 
 @app.get("/api/project/templates")
-async def get_project_templates():
+def get_project_templates():
     projects_dir = get_projects_dir()
     json_path = projects_dir / "projects.json"
     if not json_path.exists():
@@ -216,62 +218,8 @@ def _install_requirements(req_file: str) -> None:
             logger.error(f"Failed to install requirements using standard pip: {e.stderr or e.stdout or str(e)}")
 
 
-def robust_copy_tree(src: Path, dst: Path) -> None:
-    """
-    Recursively copies a directory tree from src to dst.
-    - Handles merging with existing directories.
-    - Overwrites existing files, making them writeable first if they exist and are read-only.
-    - If shutil.copy2 (metadata copy) fails due to filesystem permissions/capabilities,
-      falls back to shutil.copy (data only).
-    - Preserves symbolic links as links and ignores dangling symlinks.
-    - Captures and logs exceptions rather than aborting, ensuring as many files as possible are copied.
-    """
-    dst.mkdir(parents=True, exist_ok=True)
-    for entry in os.scandir(src):
-        src_item = Path(entry.path)
-        dst_item = dst / entry.name
-        
-        if entry.is_symlink():
-            try:
-                # Remove existing destination item if it exists
-                if dst_item.exists() or dst_item.is_symlink():
-                    if dst_item.is_dir() and not dst_item.is_symlink():
-                        shutil.rmtree(dst_item)
-                    else:
-                        dst_item.unlink()
-                
-                # Copy symlink
-                link_target = os.readlink(src_item)
-                os.symlink(link_target, dst_item)
-                logger.info(f"Copied symlink {src_item} -> {dst_item}")
-            except Exception as e:
-                logger.warning(f"Failed to copy symlink {src_item} to {dst_item}: {e}")
-        elif entry.is_dir():
-            robust_copy_tree(src_item, dst_item)
-        else:
-            try:
-                # If target file exists and is read-only, try to change permissions to writeable
-                if dst_item.exists():
-                    try:
-                        os.chmod(dst_item, 0o666)
-                    except Exception:
-                        pass
-                
-                # Attempt to copy file with metadata
-                shutil.copy2(str(src_item), str(dst_item))
-            except (OSError, PermissionError) as e:
-                logger.warning(f"shutil.copy2 failed for {src_item} -> {dst_item} due to: {e}. Retrying with basic copy...")
-                try:
-                    # Fallback: copy file data and basic permissions only
-                    shutil.copy(str(src_item), str(dst_item))
-                except Exception as e2:
-                    logger.error(f"Failed to copy file {src_item} to {dst_item}: {e2}")
-            except Exception as e:
-                logger.error(f"Unexpected error copying file {src_item} to {dst_item}: {e}")
-
-
 @app.post("/api/project/open")
-async def open_project(payload: ProjectPathPayload):
+def open_project(payload: ProjectPathPayload):
     global active_project_path
     path = payload.project_path
     template_id = payload.template_id
@@ -295,7 +243,7 @@ async def open_project(payload: ProjectPathPayload):
             template_src = projects_dir / template_id
             if template_src.exists() and template_src.is_dir():
                 logger.info(f"Deploying template {template_id} from {template_src} to {path}")
-                robust_copy_tree(template_src, Path(path))
+                shutil.copytree(template_src, path, symlinks=True, dirs_exist_ok=True)
             else:
                 logger.warning(f"Template directory not found: {template_src}")
         else:
@@ -374,14 +322,14 @@ async def open_project(payload: ProjectPathPayload):
     }
 
 @app.get("/api/project/recent")
-async def get_recent_projects():
+def get_recent_projects():
     return {"recent_projects": recent_projects}
 
 class StateUpdatePayload(BaseModel):
     updates: Dict[str, Any]
 
 @app.get("/api/state")
-async def get_state_endpoint():
+def get_state_endpoint():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     try:
@@ -391,9 +339,12 @@ async def get_state_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/state/update")
-async def update_state_endpoint(payload: StateUpdatePayload):
+def update_state_endpoint(payload: StateUpdatePayload):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
+    if runner_state.running:
+        # The runner saves its own copy of the state after each explore step and would overwrite this edit
+        raise HTTPException(status_code=409, detail="Shared state cannot be changed while the loop is running")
     try:
         current_state = load_state(active_project_path)
         updated_state = run_state_hook(active_project_path, current_state, payload.updates)
@@ -404,7 +355,7 @@ async def update_state_endpoint(payload: StateUpdatePayload):
 
 # Database REST APIs
 @app.get("/api/database")
-async def get_database_endpoint():
+def get_database_endpoint():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     try:
@@ -418,7 +369,7 @@ class DatabaseUpdatePayload(BaseModel):
     rows: List[Dict[str, Any]]
 
 @app.post("/api/database/update")
-async def update_database_endpoint(payload: DatabaseUpdatePayload):
+def update_database_endpoint(payload: DatabaseUpdatePayload):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     try:
@@ -454,7 +405,7 @@ async def update_database_endpoint(payload: DatabaseUpdatePayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/database/initialize")
-async def initialize_database_endpoint():
+def initialize_database_endpoint():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     try:
@@ -464,13 +415,13 @@ async def initialize_database_endpoint():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/database/import")
-async def import_database_endpoint(file: UploadFile = File(...)):
+def import_database_endpoint(file: UploadFile = File(...)):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     try:
         temp_csv = os.path.join(active_project_path, "uploaded_import_temp.csv")
         with open(temp_csv, "wb") as f:
-            f.write(await file.read())
+            shutil.copyfileobj(file.file, f)
         df = initialize_project_database(active_project_path, initial_csv_path=temp_csv)
         os.remove(temp_csv)
         return df.fillna("").to_dict(orient="records")
@@ -483,7 +434,7 @@ class HookSavePayload(BaseModel):
     content: str
 
 @app.post("/api/hooks/save")
-async def save_hook_endpoint(payload: HookSavePayload):
+def save_hook_endpoint(payload: HookSavePayload):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     try:
@@ -509,7 +460,7 @@ async def save_hook_endpoint(payload: HookSavePayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/hooks/load/{name}")
-async def load_hook_endpoint(name: str):
+def load_hook_endpoint(name: str):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     hook_path = os.path.join(active_project_path, "hooks", name)
@@ -622,7 +573,7 @@ def ai_generate_hook_endpoint(payload: AIGeneratePayload):
         )
 
     # Use gemini-2.5-flash as the state-of-the-art developer model
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     api_payload = {
         "contents": [
             {
@@ -642,7 +593,7 @@ def ai_generate_hook_endpoint(payload: AIGeneratePayload):
     req = urllib.request.Request(
         url,
         data=json.dumps(api_payload).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
         method="POST"
     )
     
@@ -700,7 +651,8 @@ async def run_start_endpoint(payload: RunStartPayload):
     if not df.empty and "_zx_iteration" in df.columns:
         state["current_iteration"] = int(df["_zx_iteration"].max())
     
-    # Spawn sequential runner in a background worker thread
+    # Claim the runner before the thread starts so a second request is rejected
+    runner_state.running = True
     t = threading.Thread(
         target=run_loop_in_thread,
         args=(
@@ -717,14 +669,14 @@ async def run_start_endpoint(payload: RunStartPayload):
     return {"status": "success", "message": "Sequential loop triggered"}
 
 @app.post("/api/run/stop")
-async def run_stop_endpoint():
+def run_stop_endpoint():
     if not runner_state.running:
         return {"status": "ignored", "message": "Loop not running"}
     runner_state.stop_requested = True
     return {"status": "success", "message": "Stop loop request issued"}
 
 @app.get("/api/run/status")
-async def run_status_endpoint():
+def run_status_endpoint():
     return {
         "running": runner_state.running,
         "hook_stage": runner_state.hook_stage,
@@ -732,7 +684,7 @@ async def run_status_endpoint():
     }
 
 @app.get("/api/run/log/{row_id}", response_class=PlainTextResponse)
-async def get_run_log_endpoint(row_id: int):
+def get_run_log_endpoint(row_id: int):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     log_path = os.path.join(active_project_path, "runs", f"run_{row_id}", "zx_hook.log")
@@ -745,7 +697,7 @@ async def get_run_log_endpoint(row_id: int):
         return f"Failed loading log: {str(e)}"
 
 @app.get("/api/run/explore-log/{iteration}", response_class=PlainTextResponse)
-async def get_explore_log_endpoint(iteration: int):
+def get_explore_log_endpoint(iteration: int):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     log_path = os.path.join(active_project_path, "runs", f"explore_{iteration}.log")
@@ -793,7 +745,8 @@ def get_dir_tree(base_path: str, current_path: str) -> List[Dict[str, Any]]:
             if entry.name in (".git", "__pycache__", ".lock") or entry.name.endswith(".lock"):
                 continue
             rel_path = os.path.relpath(entry.path, base_path)
-            if entry.is_dir():
+            # Do not follow symlinked dirs: a link to a parent would recurse forever
+            if entry.is_dir(follow_symlinks=False):
                 items.append({
                     "name": entry.name,
                     "path": rel_path,
@@ -814,7 +767,7 @@ def get_dir_tree(base_path: str, current_path: str) -> List[Dict[str, Any]]:
 
 # --- Extra Explorer APIs ---
 @app.get("/api/explorer/browse")
-async def browse_directories(path: Optional[str] = Query(None)):
+def browse_directories(path: Optional[str] = Query(None)):
     if not path or not path.strip():
         path = os.path.expanduser("~")
     
@@ -855,18 +808,23 @@ async def browse_directories(path: Optional[str] = Query(None)):
     }
 
 @app.get("/api/explorer/tree")
-async def get_explorer_tree():
+def get_explorer_tree():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     return get_dir_tree(active_project_path, active_project_path)
 
+MAX_PREVIEW_BYTES = 50 * 1024 * 1024
+
 @app.get("/api/explorer/read")
-async def read_explorer_file(path: str):
+def read_explorer_file(path: str):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     abs_path = os.path.join(active_project_path, path)
     if not os.path.exists(abs_path) or os.path.isdir(abs_path):
         raise HTTPException(status_code=404, detail="File not found")
+    # Files are sent whole (binary as base64), so a huge result file would exhaust memory
+    if os.path.getsize(abs_path) > MAX_PREVIEW_BYTES:
+        raise HTTPException(status_code=413, detail=f"File is larger than {MAX_PREVIEW_BYTES // (1024 * 1024)} MB and cannot be previewed")
     
     # Check if the file is an image (PNG, JPG, JPEG, GIF, WEBP, SVG)
     ext = os.path.splitext(abs_path)[1].lower()
@@ -922,7 +880,7 @@ class RenamePayload(BaseModel):
     new_path: str
 
 @app.post("/api/explorer/rename")
-async def rename_explorer_item(payload: RenamePayload):
+def rename_explorer_item(payload: RenamePayload):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     abs_old = os.path.join(active_project_path, payload.old_path)
@@ -940,7 +898,7 @@ class DeletePayload(BaseModel):
     path: str
 
 @app.post("/api/explorer/delete")
-async def delete_explorer_item(payload: DeletePayload):
+def delete_explorer_item(payload: DeletePayload):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     abs_path = os.path.join(active_project_path, payload.path)
@@ -957,7 +915,7 @@ async def delete_explorer_item(payload: DeletePayload):
 
 # --- Custom Visualization Hook Endpoint ---
 @app.get("/api/visualize/custom")
-async def get_custom_visualizations():
+def get_custom_visualizations():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     try:
@@ -996,11 +954,11 @@ def check_git_init(project_path: str) -> bool:
 
 def setup_local_git_config(project_path: str):
     # Configure user name and email locally so commits do not fail if git isn't configured globally
-    subprocess.run(["git", "config", "local", "user.name", "zX Backup Service"], cwd=project_path, capture_output=True)
-    subprocess.run(["git", "config", "local", "user.email", "backup@zx.internal"], cwd=project_path, capture_output=True)
+    subprocess.run(["git", "config", "--local", "user.name", "zX Backup Service"], cwd=project_path, capture_output=True)
+    subprocess.run(["git", "config", "--local", "user.email", "backup@zx.internal"], cwd=project_path, capture_output=True)
 
 @app.get("/api/git/status")
-async def git_status():
+def git_status():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     
@@ -1051,7 +1009,7 @@ async def git_status():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/git/init")
-async def git_init():
+def git_init():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     
@@ -1124,7 +1082,7 @@ async def git_init():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/git/gitignore")
-async def git_get_gitignore():
+def git_get_gitignore():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     
@@ -1143,7 +1101,7 @@ class GitignorePayload(BaseModel):
     content: str
 
 @app.post("/api/git/gitignore")
-async def git_save_gitignore(payload: GitignorePayload):
+def git_save_gitignore(payload: GitignorePayload):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     
@@ -1156,7 +1114,7 @@ async def git_save_gitignore(payload: GitignorePayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/git/commit")
-async def git_commit(payload: GitCommitPayload):
+def git_commit(payload: GitCommitPayload):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     
@@ -1200,7 +1158,7 @@ async def git_commit(payload: GitCommitPayload):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/git/log")
-async def git_log():
+def git_log():
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     
@@ -1232,7 +1190,7 @@ async def git_log():
         return {"backups": []}
 
 @app.post("/api/git/restore")
-async def git_restore(payload: GitRestorePayload):
+def git_restore(payload: GitRestorePayload):
     if not active_project_path:
         raise HTTPException(status_code=400, detail="No active project opened")
     
