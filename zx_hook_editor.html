@@ -1,0 +1,162 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&family=Syne:wght@400;500;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0A0B0F;--bg2:#111318;--bg3:#1A1C24;--bg4:#22252F;
+    --border:#2A2D38;--border2:#363A48;
+    --text:#E8EAF0;--text2:#8B8FA8;--text3:#555870;
+    --accent:#5B6BF8;--accent2:#7B8BFF;--accent-glow:rgba(91,107,248,0.12);
+    --green:#2ECC8A;--amber:#F5A623;--red:#F25757;--purple:#B57BFF;
+    --kw:#C792EA;--str:#C3E88D;--fn:#82AAFF;--num:#F78C6C;--cm:#546E7A;--type:#FFCB6B;
+    --font-mono:'JetBrains Mono',monospace;--font-ui:'Syne',sans-serif;
+  }
+  body{background:var(--bg);color:var(--text);font-family:var(--font-ui);font-size:13px}
+  .shell{display:flex;height:100vh;min-height:640px;flex-direction:column}
+  .topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 20px;height:48px;display:flex;align-items:center;gap:12px;flex-shrink:0}
+  .logo-mark{width:24px;height:24px;background:var(--accent);border-radius:5px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;color:#fff;flex-shrink:0}
+  .btn{border:1px solid var(--border2);background:var(--bg3);color:var(--text2);border-radius:5px;padding:5px 11px;cursor:pointer;font-family:var(--font-ui);font-size:12px;display:flex;align-items:center;gap:5px;transition:all .15s;white-space:nowrap}
+  .btn:hover{border-color:var(--border);color:var(--text)}
+  .btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn-accent:hover{background:var(--accent2)}
+  .btn-green{background:rgba(46,204,138,.15);border-color:rgba(46,204,138,.3);color:var(--green)}
+  .sep{width:1px;height:24px;background:var(--border);flex-shrink:0}
+  .main{flex:1;display:flex;overflow:hidden}
+  .hook-list{width:180px;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0}
+  .hook-section{padding:10px 14px 4px;font-size:10px;color:var(--text3);letter-spacing:1.5px;text-transform:uppercase;font-family:var(--font-mono)}
+  .hook-item{display:flex;align-items:center;padding:8px 14px;cursor:pointer;gap:8px;color:var(--text2);font-family:var(--font-mono);font-size:12px;border-left:2px solid transparent;transition:all .12s}
+  .hook-item:hover{background:var(--bg3);color:var(--text)}
+  .hook-item.active{background:var(--accent-glow);color:var(--accent2);border-left:2px solid var(--accent)}
+  .hook-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .dot-done{background:var(--green)}
+  .dot-empty{background:var(--border2)}
+  .dot-optional{background:var(--purple)}
+  .editor-area{flex:1;display:flex;flex-direction:column;overflow:hidden}
+  .editor-tabs{display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16px;gap:2px;flex-shrink:0}
+  .tab{padding:10px 14px;font-family:var(--font-mono);font-size:12px;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:all .12s}
+  .tab:hover{color:var(--text2)}
+  .tab.active{color:var(--accent2);border-bottom-color:var(--accent)}
+  .editor-body{flex:1;display:flex;overflow:hidden}
+  .line-nums{padding:16px 0;background:var(--bg2);border-right:1px solid var(--border);min-width:42px;text-align:right;flex-shrink:0}
+  .ln{font-family:var(--font-mono);font-size:12px;color:var(--text3);padding:0 10px 0 6px;line-height:21px}
+  .ln.active{color:var(--text2)}
+  .code-area{flex:1;padding:16px 20px;overflow:auto;font-family:var(--font-mono);font-size:12px;line-height:21px;background:var(--bg2)}
+  .kw{color:var(--kw)}
+  .fn{color:var(--fn)}
+  .str{color:var(--str)}
+  .num{color:var(--num)}
+  .cm{color:var(--cm);font-style:italic}
+  .tp{color:var(--type)}
+  .op{color:var(--text)}
+  .line{display:block;white-space:pre}
+  .line.highlight{background:rgba(91,107,248,.08);border-left:2px solid var(--accent);padding-left:8px;margin-left:-10px}
+  .bottom-panel{height:180px;background:var(--bg);border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column}
+  .panel-tabs{display:flex;align-items:center;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16px;gap:16px}
+  .ptab{font-size:11px;padding:8px 0;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;font-family:var(--font-mono)}
+  .ptab.active{color:var(--green);border-bottom-color:var(--green)}
+  .output-area{flex:1;padding:10px 16px;font-family:var(--font-mono);font-size:11px;overflow-y:auto;line-height:18px}
+  .out-ok{color:var(--green)}
+  .out-info{color:var(--text2)}
+  .out-dim{color:var(--text3)}
+  .out-warn{color:var(--amber)}
+  .status-strip{display:flex;align-items:center;gap:12px;padding:6px 16px;border-top:1px solid var(--border);font-family:var(--font-mono);font-size:10px;color:var(--text3);flex-shrink:0}
+  .status-dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+</style>
+<div class="shell">
+  <div class="topbar">
+    <div class="logo-mark">zX</div>
+    <span style="color:var(--text3);font-size:12px;font-family:var(--font-mono)">hooks /</span>
+    <span style="color:var(--text);font-size:12px;font-family:var(--font-mono)">explore.py</span>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px">
+      <button class="btn">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2v12M3 7l5-5 5 5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Upload
+      </button>
+      <div class="sep"></div>
+      <button class="btn btn-green">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Validate on target
+      </button>
+      <button class="btn btn-accent">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 14 L14 8 L2 2 Z" fill="white"/></svg>
+        Save & apply
+      </button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="hook-list">
+      <div class="hook-section">hooks</div>
+      <div class="hook-item"><div class="hook-dot dot-optional"></div>initialize.py</div>
+      <div class="hook-item"><div class="hook-dot dot-done"></div>preprocess.py</div>
+      <div class="hook-item"><div class="hook-dot dot-done"></div>launch.py</div>
+      <div class="hook-item"><div class="hook-dot dot-done"></div>extract.py</div>
+      <div class="hook-item active"><div class="hook-dot dot-optional"></div>explore.py</div>
+      <div class="hook-section">viz</div>
+      <div class="hook-item"><div class="hook-dot dot-empty"></div>plot.py</div>
+    </div>
+    <div class="editor-area">
+      <div class="editor-tabs">
+        <div class="tab active">explore.py</div>
+        <div class="tab">preview · last run</div>
+      </div>
+      <div class="editor-body">
+        <div class="line-nums">
+          ${Array.from({length:28},(_,i)=>`<div class="ln ${i+1>=8&&i+1<=10?'active':''}">${i+1}</div>`).join('')}
+        </div>
+        <div class="code-area">
+<span class="line"><span class="cm"># Kriging surrogate + gradient descent exploration</span></span>
+<span class="line"><span class="kw">from</span> <span class="fn">pandas</span> <span class="kw">import</span> DataFrame</span>
+<span class="line"><span class="kw">from</span> <span class="fn">sklearn.gaussian_process</span> <span class="kw">import</span> GaussianProcessRegressor</span>
+<span class="line"><span class="kw">from</span> <span class="fn">sklearn.gaussian_process.kernels</span> <span class="kw">import</span> Matern</span>
+<span class="line"><span class="kw">from</span> <span class="fn">scipy.optimize</span> <span class="kw">import</span> minimize</span>
+<span class="line"><span class="kw">import</span> <span class="fn">numpy</span> <span class="kw">as</span> <span class="fn">np</span></span>
+<span class="line"> </span>
+<span class="line highlight"><span class="kw">def</span> <span class="fn">explore</span>(table: <span class="tp">DataFrame</span>, state: <span class="tp">dict</span>) -> <span class="tp">list</span>[<span class="tp">dict</span>]:</span>
+<span class="line highlight">    <span class="cm">"""Bayesian optimization via Kriging surrogate."""</span></span>
+<span class="line highlight">    max_iter = state.get(<span class="str">"max_iterations"</span>, <span class="num">5</span>)</span>
+<span class="line">    iteration = state.get(<span class="str">"iteration"</span>, <span class="num">0</span>)</span>
+<span class="line">    <span class="kw">if</span> iteration >= max_iter:</span>
+<span class="line">        <span class="kw">return</span> []</span>
+<span class="line"> </span>
+<span class="line">    done = table[table[<span class="str">"_zx_status"</span>] == <span class="str">"completed"</span>]</span>
+<span class="line">    X = done[[<span class="str">"x1"</span>, <span class="str">"x2"</span>]].values</span>
+<span class="line">    y = done[<span class="str">"f_x"</span>].values</span>
+<span class="line"> </span>
+<span class="line">    gpr = GaussianProcessRegressor(kernel=Matern(nu=<span class="num">2.5</span>))</span>
+<span class="line">    gpr.fit(X, y)</span>
+<span class="line"> </span>
+<span class="line">    x0 = X[np.argmin(y)]</span>
+<span class="line">    result = minimize(</span>
+<span class="line">        <span class="kw">lambda</span> x: gpr.predict([x])[<span class="num">0</span>],</span>
+<span class="line">        x0, method=<span class="str">"L-BFGS-B"</span>,</span>
+<span class="line">        bounds=[(<span class="num">-3</span>, <span class="num">3</span>), (<span class="num">-2</span>, <span class="num">2</span>)]</span>
+<span class="line">    )</span>
+<span class="line">    state[<span class="str">"iteration"</span>] = iteration + <span class="num">1</span></span>
+<span class="line">    <span class="kw">return</span> [{<span class="str">"x1"</span>: result.x[<span class="num">0</span>], <span class="str">"x2"</span>: result.x[<span class="num">1</span>]}]</span>
+        </div>
+      </div>
+      <div class="bottom-panel">
+        <div class="panel-tabs">
+          <div class="ptab active">validation</div>
+          <div class="ptab">hook log · row 19</div>
+          <div class="ptab">dry run preview</div>
+        </div>
+        <div class="output-area">
+          <div class="out-dim">$ python -c "import ast; ast.parse(open('hooks/explore.py').read())"</div>
+          <div class="out-ok">✓ Syntax OK — validated on local target (pid 48201)</div>
+          <div style="height:6px"></div>
+          <div class="out-dim">$ python -c "from hooks.explore import explore; ..."</div>
+          <div class="out-ok">✓ Import OK — function signature matches expected interface</div>
+          <div style="height:6px"></div>
+          <div class="out-warn">⚠ sklearn not found in ~/.zx/backend — will install on first run</div>
+          <div class="out-info" style="margin-top:4px">  packages: scikit-learn>=1.3, scipy>=1.11, numpy>=1.24</div>
+        </div>
+        <div class="status-strip">
+          <div class="status-dot"></div>
+          <span>local · python 3.11.9 · uv 0.4.2</span>
+          <span style="margin-left:auto">UTF-8 · 28 lines · Python</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
