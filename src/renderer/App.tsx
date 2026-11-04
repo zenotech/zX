@@ -597,6 +597,8 @@ export default function App() {
                 activeProject={activeProject}
                 apiCall={apiCall}
                 theme={theme}
+                authToken={authToken}
+                port={port}
               />
             </div>
           )}

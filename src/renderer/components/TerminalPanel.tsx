@@ -129,9 +129,10 @@ interface TerminalWindowProps {
   port: number;
   isActive: boolean;
   theme: 'dark' | 'light';
+  initialCommand?: string; // run by the backend shell on start; must be one of its allowed AI CLIs
 }
 
-function TerminalWindow({ instanceId, authToken, port, isActive, theme }: TerminalWindowProps) {
+export function TerminalWindow({ instanceId, authToken, port, isActive, theme, initialCommand }: TerminalWindowProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -173,7 +174,7 @@ function TerminalWindow({ instanceId, authToken, port, isActive, theme }: Termin
     fitAddonRef.current = fitAddon;
 
     // Establish WebSocket shell process connection
-    const wsUrl = `ws://127.0.0.1:${port}/ws/terminal?token=${authToken}`;
+    const wsUrl = `ws://127.0.0.1:${port}/ws/terminal?token=${authToken}` + (initialCommand ? `&cmd=${encodeURIComponent(initialCommand)}` : '');
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 

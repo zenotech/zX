@@ -1,5 +1,6 @@
 import os
 import pty
+import shlex
 import asyncio
 import struct
 import fcntl
@@ -10,8 +11,10 @@ from fastapi import WebSocket
 logger = logging.getLogger("zx_terminal")
 
 class TerminalSession:
-    def __init__(self, ws: WebSocket):
+    def __init__(self, ws: WebSocket, cwd: str | None = None, command: str | None = None):
         self.ws = ws
+        self.cwd = cwd
+        self.command = command
         self.master_fd = None
         self.pid = None
         self.read_task = None
@@ -24,8 +27,19 @@ class TerminalSession:
             # Let's find the shell or fallback
             shell = os.environ.get("SHELL", "/bin/sh")
             os.environ["TERM"] = "xterm-256color"
+            if self.cwd:
+                try:
+                    os.chdir(self.cwd)
+                except OSError:
+                    pass
             try:
-                os.execv(shell, [shell])
+                # Login shell so tools installed via the user's profile (e.g. AI CLIs) are on PATH,
+                # even when the packaged app was launched from Finder with a minimal environment
+                # A startup command is run by the shell itself (typed-ahead input is dropped by zsh),
+                # then replaced by an ordinary shell when it exits
+                if self.command:
+                    os.execv(shell, [shell, "-l", "-i", "-c", f"{self.command}; exec {shlex.quote(shell)} -l"])
+                os.execv(shell, [shell, "-l"])
             except Exception:
                 try:
                     os.execv("/bin/bash", ["/bin/bash"])
