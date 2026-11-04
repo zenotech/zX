@@ -265,3 +265,42 @@ TEMPLATES_MAP = {
     "state.py": STATE_TEMPLATE,
 }
 
+
+AGENTS_GUIDE = """# zX project guide for AI coding assistants
+
+This folder is a zX parametric exploration project. zX runs one row of input
+parameters at a time through Python hook scripts in `hooks/`. Edit hooks here;
+do not edit zX itself.
+
+## Files
+- `hooks/*.py` - the hooks below. Each file defines one function with the same name.
+- `zx_database.csv` - one row per run. Columns starting with `_zx_` (status, run dir,
+  errors, iteration, ...) are owned by zX: read them, never write them.
+- `zx_state.json` - shared state dict passed to every hook.
+- `runs/run_<row_id>/` - per-row working directory (`run_dir`); `zx_hook.log` holds
+  that row's hook output. `runs/explore_<n>.log` holds exploration output.
+
+## Hook contract
+| File | Signature | Returns |
+|------|-----------|---------|
+| `initialize.py` | `initialize(table: DataFrame, state: dict)` | `(rows: list[dict], state: dict)` - the initial input rows |
+| `state.py` | `state(state: dict, updates: dict)` | the updated state dict (validate `updates` here) |
+| `preprocess.py` | `preprocess(row: dict, state: dict, run_dir: Path)` | `None` - write solver inputs into `run_dir` |
+| `launch.py` | `launch(row: dict, state: dict, run_dir: Path)` | dict with `status` (`"completed"` or `"submitted"`), `job_id` (when submitted, e.g. Slurm), `stdout`, `stderr`, `returncode` |
+| `extract.py` | `extract(row: dict, state: dict, run_dir: Path)` | dict of result columns to merge into the row |
+| `explore.py` | `explore(table: DataFrame, state: dict)` | `list[dict]` of new rows; `[]` stops exploration. Runs after a batch completes |
+| `plot.py` | `plot(table: DataFrame, state: dict)` | `{name: plotly_figure_dict}` shown on the dashboard |
+
+`table` is the database as a pandas DataFrame. Hooks may mutate `state`.
+
+## Checking your work
+- `python -m py_compile hooks/<name>.py` for syntax.
+- Call a hook directly with a small DataFrame/dict to test it; avoid launching real
+  solver jobs unless the user asks.
+"""
+
+AGENT_GUIDES_MAP = {
+    "AGENTS.md": AGENTS_GUIDE,
+    # Claude Code reads CLAUDE.md; import the shared guide instead of duplicating it
+    "CLAUDE.md": "@AGENTS.md\n",
+}

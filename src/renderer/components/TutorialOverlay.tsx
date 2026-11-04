@@ -63,7 +63,7 @@ export default function TutorialOverlay({
     },
     {
       title: "4. Custom Python Hooks 🐍",
-      content: "Need custom automation? Edit Python Scripts for Preprocessing, solver execution, Extraction, and Optimization. Leverages Google Gemini for lightning-fast autocomplete and suggestions!",
+      content: "Need custom automation? Edit Python Scripts for Preprocessing, solver execution, Extraction, and Optimization. Open Claude Code, Gemini CLI or Codex from your PATH beside the editor to write and fix hooks.",
       selector: '#layout-content',
       view: 'editor'
     },
